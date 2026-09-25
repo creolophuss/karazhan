@@ -194,6 +194,23 @@ export async function permanentlyDeleteArchivedProjectTask(
   });
 }
 
+export async function reopenArchivedProjectTask(
+  client: KarazhanClient,
+  nodeId: string,
+  expectedRevision: number,
+) {
+  const { operationId, context } = uiContext("reopen-archived");
+  return client.execute({
+    type: "reopen_archived_subtree",
+    payload: {
+      node_id: nodeId,
+      expected_revision: expectedRevision,
+      event_id: operationId,
+      context,
+    },
+  });
+}
+
 export async function createProjectTask(
   client: KarazhanClient,
   kind: "project" | "task",

@@ -16,7 +16,7 @@ The complete instructions for desktop startup, verification, database locations,
 
 Child acceptance criteria and all 32 Stage 3 MVP scenarios are mapped to tests, retained evidence, or explicit gaps in [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md).
 
-The complete Backlog, Search, Settings/Import, real Stage 2.5 cutover, and release/distribution responsibilities are explicitly assigned to proposed future Children in [`docs/deferred-work-handoff.md`](docs/deferred-work-handoff.md).
+The complete Backlog workflow is delivered in this Child. Search, Settings/Import, real Stage 2.5 cutover, and release/distribution remain assigned to proposed future Children in [`docs/deferred-work-handoff.md`](docs/deferred-work-handoff.md).
 
 The complete review package and reviewer checklist are in [`docs/delivery-summary.md`](docs/delivery-summary.md).
 
@@ -60,7 +60,11 @@ Start the desktop development application from the repository root with `npm run
 - idempotent progress/delivery event append plus recent-event and full-timeline queries that never mutate current fields;
 - typed ResourceBinding add/list/availability commands, including shared locators and non-destructive missing-path handling;
 - nearest-ancestor Project Context path lookup that never reads or scans Context contents;
-- Backlog edit/discard and atomic idempotent promotion to Project or Task while retaining the source link;
+- Backlog projection with Root-hidden Parent breadcrumbs, stable sibling order, and Parent/kind/status/priority/tag filtering;
+- Backlog `+` creation plus right-click Edit/Move/Promote/Discard, compact row-local Save/Cancel editing, and atomic drag ordering across Parents;
+- atomic idempotent Backlog promotion to a Project or Task, retaining the source and exposing target navigation;
+- Today `+` creation of one-line checkbox Quick items, backed by the shared Task model and excluded from Projects & Tasks;
+- recursive Archive Reopen that restores the selected subtree and required ancestors without recreating Today membership;
 - revision, idempotency, actor/channel, timestamp, and structured-error coverage across shared-core writes;
 - explicit actor/channel metadata and idempotent create/update commands;
 - WAL, bounded busy timeout, restart persistence, and migration rollback evidence.

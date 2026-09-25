@@ -14,6 +14,7 @@ const CORE_MIGRATION_1: &str = include_str!("../migrations/0001_core.sql");
 const CORE_MIGRATION_2: &str = include_str!("../migrations/0002_resource_binding_audit.sql");
 const CORE_MIGRATION_3: &str = include_str!("../migrations/0003_archive.sql");
 const CORE_MIGRATION_4: &str = include_str!("../migrations/0004_progress_step_status.sql");
+const CORE_MIGRATION_5: &str = include_str!("../migrations/0005_quick_items.sql");
 const IMPORT_RUN_NAMESPACE: &str = "74285973-cf02-5e66-9165-a636fb71d94e";
 
 pub mod application;
@@ -124,12 +125,35 @@ pub enum ResourceAvailability {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BacklogKind {
     Idea,
     Problem,
     Request,
     Research,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BacklogStatus {
+    Captured,
+    Considering,
+    Ready,
+    Promoted,
+    Discarded,
+}
+
+impl BacklogStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Captured => "captured",
+            Self::Considering => "considering",
+            Self::Ready => "ready",
+            Self::Promoted => "promoted",
+            Self::Discarded => "discarded",
+        }
+    }
 }
 
 impl BacklogKind {
@@ -320,6 +344,18 @@ pub struct NewTask<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewBacklog<'a> {
+    pub id: &'a str,
+    pub parent_id: &'a str,
+    pub key: &'a str,
+    pub title: &'a str,
+    pub notes: Option<&'a str>,
+    pub kind: BacklogKind,
+    pub priority: Priority,
+    pub tags_json: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewProgressEvent<'a> {
     pub id: &'a str,
     pub kind: ProgressEventKind,
@@ -350,10 +386,12 @@ pub struct BacklogPatch<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PromotionTarget<'a> {
     Project(NewProject<'a>),
+    ProjectAtEnd(NewProject<'a>),
     Task(NewTask<'a>),
+    TaskAtEnd(NewTask<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PromotionResult {
     pub target_node_id: String,
     pub source_revision: i64,
@@ -429,6 +467,7 @@ pub struct TodayItem {
     pub has_steps: bool,
     pub has_available_workspace: bool,
     pub direct_child_tasks: Vec<Task>,
+    pub is_quick_item: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -476,6 +515,33 @@ pub struct Backlog {
     pub backlog_status: String,
     pub notes: Option<String>,
     pub tags_json: String,
+    pub source: Option<String>,
+    pub promoted_node_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct BacklogFilter {
+    pub parent_id: Option<String>,
+    pub kind: Option<BacklogKind>,
+    pub status: Option<BacklogStatus>,
+    pub priority: Option<Priority>,
+    pub tag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BacklogItem {
+    pub id: String,
+    pub parent_id: String,
+    pub parent_breadcrumb: Vec<String>,
+    pub key: String,
+    pub title: String,
+    pub priority: String,
+    pub position: i64,
+    pub revision: i64,
+    pub backlog_kind: String,
+    pub backlog_status: String,
+    pub notes: Option<String>,
+    pub tags: Vec<String>,
     pub source: Option<String>,
     pub promoted_node_id: Option<String>,
 }
@@ -537,6 +603,8 @@ pub enum DomainError {
     ConstraintViolation(String),
     #[error("today accepts only projects and tasks")]
     InvalidTodayTarget,
+    #[error("operation accepts only Today quick items")]
+    InvalidQuickItem,
     #[error("revision conflict: expected {expected}, actual {actual}")]
     RevisionConflict { expected: i64, actual: i64 },
     #[error("migration {version} checksum mismatch")]
@@ -623,6 +691,7 @@ impl DomainError {
             Self::AlreadyExists => "already_exists",
             Self::ConstraintViolation(_) => "constraint_violation",
             Self::InvalidTodayTarget => "invalid_today_target",
+            Self::InvalidQuickItem => "invalid_quick_item",
             Self::RevisionConflict { .. } => "revision_conflict",
             Self::MigrationChecksum { .. } => "migration_checksum",
             Self::MigrationBusy => "migration_busy",
@@ -706,6 +775,7 @@ impl Database {
             (2, CORE_MIGRATION_2),
             (3, CORE_MIGRATION_3),
             (4, CORE_MIGRATION_4),
+            (5, CORE_MIGRATION_5),
         ] {
             let applied = connection
                 .query_row(
@@ -848,6 +918,238 @@ impl Database {
         )
     }
 
+    pub fn create_backlog(
+        &mut self,
+        backlog: NewBacklog<'_>,
+        metadata: CommandMetadata<'_>,
+    ) -> Result<MutationResult, DomainError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let request_digest = digest_fields(&[
+            "create_backlog",
+            backlog.id,
+            backlog.parent_id,
+            backlog.key,
+            backlog.title,
+            backlog.notes.unwrap_or(""),
+            backlog.kind.as_str(),
+            backlog.priority.as_str(),
+            backlog.tags_json,
+            metadata.actor_type.as_str(),
+            metadata.actor_ref.unwrap_or(""),
+            metadata.channel.as_str(),
+        ]);
+        if let Some(result) = existing_receipt(&tx, metadata.idempotency_key, &request_digest)? {
+            return Ok(result);
+        }
+        let position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM work_nodes WHERE parent_id = ?1",
+            [backlog.parent_id],
+            |row| row.get(0),
+        )?;
+        tx.execute(
+            "INSERT INTO work_nodes (
+               id, kind, parent_id, key, title, priority, position,
+               created_at, updated_at, created_actor, updated_actor, write_source, revision
+             ) VALUES (
+               ?1, 'backlog', ?2, ?3, ?4, ?5, ?6,
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               ?7, ?7, ?8, 1
+             )",
+            params![
+                backlog.id,
+                backlog.parent_id,
+                backlog.key,
+                backlog.title,
+                backlog.priority.as_str(),
+                position,
+                metadata.actor_label(),
+                metadata.channel.as_str(),
+            ],
+        )
+        .map_err(map_storage_error)?;
+        tx.execute(
+            "INSERT INTO backlog_items (
+               node_id, backlog_kind, backlog_status, notes, tags_json
+             ) VALUES (?1, ?2, 'captured', ?3, ?4)",
+            params![
+                backlog.id,
+                backlog.kind.as_str(),
+                backlog.notes,
+                backlog.tags_json,
+            ],
+        )?;
+        ensure_no_invariant_violations(&tx)?;
+        record_receipt(
+            &tx,
+            metadata.idempotency_key,
+            "create_backlog",
+            &request_digest,
+            1,
+        )?;
+        tx.commit()?;
+        Ok(MutationResult {
+            revision: 1,
+            replayed: false,
+        })
+    }
+
+    pub fn create_quick_item(
+        &mut self,
+        node_id: &str,
+        description: &str,
+        event_id: &str,
+        metadata: CommandMetadata<'_>,
+    ) -> Result<MutationResult, DomainError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let request_digest = digest_fields(&[
+            "create_quick_item",
+            node_id,
+            description,
+            event_id,
+            metadata.actor_type.as_str(),
+            metadata.actor_ref.unwrap_or(""),
+            metadata.channel.as_str(),
+        ]);
+        if let Some(result) = existing_receipt(&tx, metadata.idempotency_key, &request_digest)? {
+            return Ok(result);
+        }
+        let tree_position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM work_nodes WHERE parent_id = ?1",
+            [SYSTEM_ROOT_ID],
+            |row| row.get(0),
+        )?;
+        let today_position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM today_items",
+            [],
+            |row| row.get(0),
+        )?;
+        let key = format!("quick-{node_id}");
+        tx.execute(
+            "INSERT INTO work_nodes (
+               id, kind, parent_id, key, title, work_status, priority, position,
+               created_at, updated_at, created_actor, updated_actor, write_source, revision
+             ) VALUES (
+               ?1, 'task', ?2, ?3, ?4, 'planned', 'none', ?5,
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               ?6, ?6, ?7, 1
+             )",
+            params![
+                node_id,
+                SYSTEM_ROOT_ID,
+                key,
+                description,
+                tree_position,
+                metadata.actor_label(),
+                metadata.channel.as_str(),
+            ],
+        )
+        .map_err(map_storage_error)?;
+        tx.execute(
+            "INSERT INTO tasks (node_id, is_quick_item) VALUES (?1, 1)",
+            [node_id],
+        )?;
+        tx.execute(
+            "INSERT INTO today_items (node_id, position, added_at, added_actor, revision)
+             VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ?3, 1)",
+            params![node_id, today_position, metadata.actor_label()],
+        )?;
+        tx.execute(
+            "INSERT INTO progress_events (
+               id, subject_node_id, occurred_at, recorded_at, event_type,
+               summary, actor_type, actor_ref, channel
+             ) VALUES (
+               ?1, ?2,
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               'today_added', 'added quick item to Today', ?3, ?4, ?5
+             )",
+            params![
+                event_id,
+                node_id,
+                metadata.actor_type.as_str(),
+                metadata.actor_ref,
+                metadata.channel.as_str(),
+            ],
+        )?;
+        ensure_no_invariant_violations(&tx)?;
+        record_receipt(
+            &tx,
+            metadata.idempotency_key,
+            "create_quick_item",
+            &request_digest,
+            1,
+        )?;
+        tx.commit()?;
+        Ok(MutationResult {
+            revision: 1,
+            replayed: false,
+        })
+    }
+
+    pub fn delete_quick_item(
+        &mut self,
+        node_id: &str,
+        expected_revision: i64,
+        metadata: CommandMetadata<'_>,
+    ) -> Result<MutationResult, DomainError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let expected_revision_text = expected_revision.to_string();
+        let request_digest = digest_fields(&[
+            "delete_quick_item",
+            node_id,
+            &expected_revision_text,
+            metadata.actor_type.as_str(),
+            metadata.actor_ref.unwrap_or(""),
+            metadata.channel.as_str(),
+        ]);
+        if let Some(result) = existing_receipt(&tx, metadata.idempotency_key, &request_digest)? {
+            return Ok(result);
+        }
+        let (actual_revision, is_quick_item): (i64, bool) = tx.query_row(
+            "SELECT n.revision, t.is_quick_item
+             FROM work_nodes n JOIN tasks t ON t.node_id = n.id
+             WHERE n.id = ?1",
+            [node_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if !is_quick_item {
+            return Err(DomainError::InvalidQuickItem);
+        }
+        if actual_revision != expected_revision {
+            return Err(DomainError::RevisionConflict {
+                expected: expected_revision,
+                actual: actual_revision,
+            });
+        }
+        tx.execute(
+            "DELETE FROM progress_events WHERE subject_node_id = ?1",
+            [node_id],
+        )?;
+        tx.execute("DELETE FROM work_nodes WHERE id = ?1", [node_id])?;
+        let result_revision = actual_revision + 1;
+        ensure_no_invariant_violations(&tx)?;
+        record_receipt(
+            &tx,
+            metadata.idempotency_key,
+            "delete_quick_item",
+            &request_digest,
+            result_revision,
+        )?;
+        tx.commit()?;
+        Ok(MutationResult {
+            revision: result_revision,
+            replayed: false,
+        })
+    }
+
     pub fn get_project(&self, id: &str) -> Result<Project, DomainError> {
         Ok(self.connection.query_row(
             "SELECT n.id, n.parent_id, n.key, n.title, n.summary, n.goal,
@@ -917,6 +1219,10 @@ impl Database {
                     EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
              FROM work_nodes n
              WHERE n.kind IN ('project', 'task')
+               AND NOT EXISTS (
+                 SELECT 1 FROM tasks quick
+                 WHERE quick.node_id = n.id AND quick.is_quick_item = 1
+               )
                AND ((?1 = 1 AND n.archived_at IS NOT NULL)
                  OR (?1 = 0 AND n.archived_at IS NULL))
              ORDER BY n.parent_id, n.position, n.id",
@@ -1040,6 +1346,111 @@ impl Database {
         })
     }
 
+    pub fn reopen_archived_subtree(
+        &mut self,
+        node_id: &str,
+        expected_revision: i64,
+        event_id: &str,
+        metadata: CommandMetadata<'_>,
+    ) -> Result<MutationResult, DomainError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let expected_revision_text = expected_revision.to_string();
+        let request_digest = digest_fields(&[
+            "reopen_archived_subtree",
+            node_id,
+            &expected_revision_text,
+            event_id,
+            metadata.actor_type.as_str(),
+            metadata.actor_ref.unwrap_or(""),
+            metadata.channel.as_str(),
+        ]);
+        if let Some(result) = existing_receipt(&tx, metadata.idempotency_key, &request_digest)? {
+            return Ok(result);
+        }
+        let (kind, actual_revision, archived): (String, i64, bool) = tx.query_row(
+            "SELECT kind, revision, archived_at IS NOT NULL FROM work_nodes WHERE id = ?1",
+            [node_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        if kind != "project" && kind != "task" {
+            return Err(DomainError::InvalidParentKind);
+        }
+        if !archived {
+            return Err(DomainError::NotArchived);
+        }
+        if actual_revision != expected_revision {
+            return Err(DomainError::RevisionConflict {
+                expected: expected_revision,
+                actual: actual_revision,
+            });
+        }
+        tx.execute(
+            "WITH RECURSIVE
+               subtree(id) AS (
+                 SELECT ?1
+                 UNION ALL
+                 SELECT n.id FROM work_nodes n JOIN subtree s ON n.parent_id = s.id
+               ),
+               ancestors(id, parent_id) AS (
+                 SELECT id, parent_id FROM work_nodes WHERE id = ?1
+                 UNION ALL
+                 SELECT n.id, n.parent_id FROM work_nodes n JOIN ancestors a ON n.id = a.parent_id
+               ),
+               reopened(id) AS (
+                 SELECT id FROM subtree
+                 UNION
+                 SELECT id FROM ancestors WHERE id <> ?2
+               )
+             UPDATE work_nodes
+             SET archived_at = NULL,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                 updated_actor = ?3,
+                 write_source = ?4,
+                 revision = revision + 1
+             WHERE id IN (SELECT id FROM reopened) AND archived_at IS NOT NULL",
+            params![
+                node_id,
+                SYSTEM_ROOT_ID,
+                metadata.actor_label(),
+                metadata.channel.as_str(),
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO progress_events (
+               id, subject_node_id, occurred_at, recorded_at, event_type,
+               summary, actor_type, actor_ref, channel
+             ) VALUES (
+               ?1, ?2,
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               'progress', 'reopened from Archive', ?3, ?4, ?5
+             )",
+            params![
+                event_id,
+                node_id,
+                metadata.actor_type.as_str(),
+                metadata.actor_ref,
+                metadata.channel.as_str(),
+            ],
+        )?;
+        ensure_no_invariant_violations(&tx)?;
+        let result_revision = actual_revision + 1;
+        record_receipt(
+            &tx,
+            metadata.idempotency_key,
+            "reopen_archived_subtree",
+            &request_digest,
+            result_revision,
+        )?;
+        tx.commit()?;
+        Ok(MutationResult {
+            revision: result_revision,
+            replayed: false,
+        })
+    }
+
     pub fn permanently_delete_archived_subtree(
         &mut self,
         node_id: &str,
@@ -1119,7 +1530,8 @@ impl Database {
             let mut statement = self.connection.prepare(
                 "SELECT n.id, n.kind, n.title, n.summary, ti.position, ti.revision,
                         n.revision, n.work_status, n.priority, n.blocker,
-                        EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
+                        EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id),
+                        COALESCE((SELECT is_quick_item FROM tasks WHERE node_id = n.id), 0)
                  FROM today_items ti
                  JOIN work_nodes n ON n.id = ti.node_id
                  WHERE n.archived_at IS NULL
@@ -1139,6 +1551,7 @@ impl Database {
                         row.get::<_, String>(8)?,
                         row.get::<_, Option<String>>(9)?,
                         row.get::<_, bool>(10)?,
+                        row.get::<_, bool>(11)?,
                     ))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?
@@ -1157,6 +1570,7 @@ impl Database {
             priority,
             blocker,
             has_steps,
+            is_quick_item,
         ) in explicit_items
         {
             let has_available_workspace = self.connection.query_row(
@@ -1219,6 +1633,7 @@ impl Database {
                 has_steps,
                 has_available_workspace,
                 direct_child_tasks,
+                is_quick_item,
             });
         }
         Ok(result)
@@ -1305,6 +1720,219 @@ impl Database {
             [node_id],
             backlog_from_row,
         )?)
+    }
+
+    pub fn list_backlog(&self, filter: &BacklogFilter) -> Result<Vec<BacklogItem>, DomainError> {
+        let kind = filter.kind.map(BacklogKind::as_str);
+        let status = filter.status.map(BacklogStatus::as_str);
+        let priority = filter.priority.map(Priority::as_str);
+        let mut statement = self.connection.prepare(
+            "SELECT n.id, n.parent_id, n.key, n.title, n.priority, n.position, n.revision,
+                    b.backlog_kind, b.backlog_status, b.notes, b.tags_json, b.source,
+                    b.promoted_node_id
+             FROM work_nodes n
+             JOIN backlog_items b ON b.node_id = n.id
+             WHERE n.archived_at IS NULL
+               AND (?1 IS NULL OR n.parent_id = ?1)
+               AND (?2 IS NULL OR b.backlog_kind = ?2)
+               AND ((?3 IS NULL AND b.backlog_status NOT IN ('discarded', 'promoted')) OR b.backlog_status = ?3)
+               AND (?4 IS NULL OR n.priority = ?4)
+               AND (?5 IS NULL OR EXISTS (
+                 SELECT 1 FROM json_each(b.tags_json) WHERE value = ?5
+               ))
+             ORDER BY n.parent_id, n.position, n.id",
+        )?;
+        let backlog = statement
+            .query_map(
+                params![
+                    filter.parent_id.as_deref(),
+                    kind,
+                    status,
+                    priority,
+                    filter.tag.as_deref()
+                ],
+                backlog_from_row,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut result = Vec::with_capacity(backlog.len());
+        for item in backlog {
+            let parent_breadcrumb = {
+                let mut statement = self.connection.prepare(
+                    "WITH RECURSIVE path(id, parent_id, title, depth) AS (
+                       SELECT id, parent_id, title, 0 FROM work_nodes WHERE id = ?1
+                       UNION ALL
+                       SELECT parent.id, parent.parent_id, parent.title, path.depth + 1
+                       FROM work_nodes parent JOIN path ON parent.id = path.parent_id
+                     )
+                     SELECT title FROM path
+                     WHERE id <> ?2
+                     ORDER BY depth DESC",
+                )?;
+                statement
+                    .query_map(params![&item.parent_id, SYSTEM_ROOT_ID], |row| row.get(0))?
+                    .collect::<rusqlite::Result<Vec<String>>>()?
+            };
+            result.push(BacklogItem {
+                id: item.id,
+                parent_id: item.parent_id,
+                parent_breadcrumb,
+                key: item.key,
+                title: item.title,
+                priority: item.priority,
+                position: item.position,
+                revision: item.revision,
+                backlog_kind: item.backlog_kind,
+                backlog_status: item.backlog_status,
+                notes: item.notes,
+                tags: serde_json::from_str(&item.tags_json)?,
+                source: item.source,
+                promoted_node_id: item.promoted_node_id,
+            });
+        }
+        Ok(result)
+    }
+
+    pub fn move_backlog(
+        &mut self,
+        node_id: &str,
+        parent_id: &str,
+        target_position: Option<usize>,
+        expected_revision: i64,
+        metadata: CommandMetadata<'_>,
+    ) -> Result<MutationResult, DomainError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let expected_revision_text = expected_revision.to_string();
+        let target_position_text = target_position.map(|value| value.to_string());
+        let request_digest = digest_fields(&[
+            "move_backlog",
+            node_id,
+            parent_id,
+            target_position_text.as_deref().unwrap_or(""),
+            &expected_revision_text,
+            metadata.actor_type.as_str(),
+            metadata.actor_ref.unwrap_or(""),
+            metadata.channel.as_str(),
+        ]);
+        if let Some(result) = existing_receipt(&tx, metadata.idempotency_key, &request_digest)? {
+            return Ok(result);
+        }
+
+        let (actual_revision, status): (i64, String) = tx.query_row(
+            "SELECT n.revision, b.backlog_status
+             FROM work_nodes n JOIN backlog_items b ON b.node_id = n.id
+             WHERE n.id = ?1",
+            [node_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if actual_revision != expected_revision {
+            return Err(DomainError::RevisionConflict {
+                expected: expected_revision,
+                actual: actual_revision,
+            });
+        }
+        if !matches!(status.as_str(), "captured" | "considering" | "ready") {
+            return Err(DomainError::InvalidBacklogState);
+        }
+
+        let next_revision = actual_revision + 1;
+        tx.execute(
+            "UPDATE work_nodes
+             SET parent_id = ?1,
+                 position = (
+                   SELECT COALESCE(MAX(position), -1) + 1
+                   FROM work_nodes
+                   WHERE parent_id = ?1
+                 ),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                 updated_actor = ?2,
+                 write_source = ?3,
+                 revision = ?4
+             WHERE id = ?5",
+            params![
+                parent_id,
+                metadata.actor_label(),
+                metadata.channel.as_str(),
+                next_revision,
+                node_id,
+            ],
+        )
+        .map_err(map_storage_error)?;
+
+        if let Some(target_position) = target_position {
+            let mut siblings = {
+                let mut statement = tx.prepare(
+                    "SELECT id, position FROM work_nodes
+                     WHERE parent_id = ?1 ORDER BY position, id",
+                )?;
+                statement
+                    .query_map([parent_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            if target_position >= siblings.len() {
+                return Err(DomainError::InvalidPosition);
+            }
+            let current_index = siblings
+                .iter()
+                .position(|(id, _)| id == node_id)
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let subject = siblings.remove(current_index);
+            siblings.insert(target_position, subject);
+
+            let max_position = siblings
+                .iter()
+                .map(|(_, position)| *position)
+                .max()
+                .unwrap_or(0);
+            let temporary_base = max_position + siblings.len() as i64 + 1;
+            for (offset, (id, _)) in siblings.iter().enumerate() {
+                tx.execute(
+                    "UPDATE work_nodes SET position = ?1 WHERE id = ?2",
+                    params![temporary_base + offset as i64, id],
+                )?;
+            }
+            for (position, (id, old_position)) in siblings.iter().enumerate() {
+                if id == node_id || *old_position == position as i64 {
+                    tx.execute(
+                        "UPDATE work_nodes SET position = ?1 WHERE id = ?2",
+                        params![position as i64, id],
+                    )?;
+                } else {
+                    tx.execute(
+                        "UPDATE work_nodes
+                         SET position = ?1,
+                             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                             updated_actor = ?2,
+                             write_source = ?3,
+                             revision = revision + 1
+                         WHERE id = ?4",
+                        params![
+                            position as i64,
+                            metadata.actor_label(),
+                            metadata.channel.as_str(),
+                            id,
+                        ],
+                    )?;
+                }
+            }
+        }
+        ensure_no_invariant_violations(&tx)?;
+        record_receipt(
+            &tx,
+            metadata.idempotency_key,
+            "move_backlog",
+            &request_digest,
+            next_revision,
+        )?;
+        tx.commit()?;
+        Ok(MutationResult {
+            revision: next_revision,
+            replayed: false,
+        })
     }
 
     pub fn update_backlog(
@@ -1476,7 +2104,7 @@ impl Database {
         expected_revision: i64,
         metadata: CommandMetadata<'_>,
     ) -> Result<PromotionResult, DomainError> {
-        let (target_id, target_kind, parent_id, key, title, position, slug, context_path) =
+        let (target_id, target_kind, parent_id, key, title, requested_position, slug, context_path) =
             match &target {
                 PromotionTarget::Project(project) => (
                     project.id,
@@ -1484,7 +2112,17 @@ impl Database {
                     project.parent_id,
                     project.key,
                     project.title,
-                    project.position,
+                    Some(project.position),
+                    project.slug,
+                    project.context_path,
+                ),
+                PromotionTarget::ProjectAtEnd(project) => (
+                    project.id,
+                    NodeKind::Project,
+                    project.parent_id,
+                    project.key,
+                    project.title,
+                    None,
                     project.slug,
                     project.context_path,
                 ),
@@ -1494,7 +2132,17 @@ impl Database {
                     task.parent_id,
                     task.key,
                     task.title,
-                    task.position,
+                    Some(task.position),
+                    None,
+                    None,
+                ),
+                PromotionTarget::TaskAtEnd(task) => (
+                    task.id,
+                    NodeKind::Task,
+                    task.parent_id,
+                    task.key,
+                    task.title,
+                    None,
                     None,
                     None,
                 ),
@@ -1503,7 +2151,8 @@ impl Database {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let expected_revision_text = expected_revision.to_string();
-        let position_text = position.to_string();
+        let position_text =
+            requested_position.map_or_else(|| "append".into(), |value| value.to_string());
         let request_digest = digest_fields(&[
             "promote_backlog",
             backlog_id,
@@ -1549,6 +2198,17 @@ impl Database {
             return Err(DomainError::InvalidBacklogState);
         }
 
+        let position = requested_position.map_or_else(
+            || {
+                tx.query_row(
+                    "SELECT COALESCE(MAX(position), -1) + 1 FROM work_nodes WHERE parent_id = ?1",
+                    [parent_id],
+                    |row| row.get(0),
+                )
+            },
+            Ok,
+        )?;
+
         tx.execute(
             "INSERT INTO work_nodes (
                id, kind, parent_id, key, title, work_status, priority, position,
@@ -1572,13 +2232,13 @@ impl Database {
         )
         .map_err(map_storage_error)?;
         match &target {
-            PromotionTarget::Project(_) => {
+            PromotionTarget::Project(_) | PromotionTarget::ProjectAtEnd(_) => {
                 tx.execute(
                     "INSERT INTO projects (node_id, slug, context_path) VALUES (?1, ?2, ?3)",
                     params![target_id, slug, context_path],
                 )?;
             }
-            PromotionTarget::Task(_) => {
+            PromotionTarget::Task(_) | PromotionTarget::TaskAtEnd(_) => {
                 tx.execute("INSERT INTO tasks (node_id) VALUES (?1)", [target_id])?;
             }
         }

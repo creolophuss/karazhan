@@ -211,7 +211,7 @@ fn work_tree_enforces_parent_matrix_and_rejects_cycles() {
 }
 
 #[test]
-fn archive_is_recursive_hides_the_subtree_and_gates_permanent_delete() {
+fn archive_reopen_and_permanent_delete_are_recursive_and_atomic() {
     let mut db = Database::open_in_memory().unwrap();
     create(
         &mut db,
@@ -292,7 +292,43 @@ fn archive_is_recursive_hides_the_subtree_and_gates_permanent_delete() {
     );
     assert!(matches!(archived_today, Err(DomainError::ArchivedNode)));
 
-    db.permanently_delete_archived_subtree(TASK_ID, 2, metadata("delete-archived-task"))
+    let reopened = db
+        .reopen_archived_subtree(
+            TASK_ID,
+            2,
+            "40000000-0000-0000-0000-000000000097",
+            metadata("reopen-task"),
+        )
+        .unwrap();
+    assert_eq!(reopened.revision, 3);
+    assert_eq!(db.list_project_task_tree().unwrap().len(), 3);
+    assert!(db.list_archived_project_task_tree().unwrap().is_empty());
+    assert_eq!(db.list_today().unwrap().len(), 1);
+    let replay = db
+        .reopen_archived_subtree(
+            TASK_ID,
+            2,
+            "40000000-0000-0000-0000-000000000097",
+            metadata("reopen-task"),
+        )
+        .unwrap();
+    assert!(replay.replayed);
+    let active_reopen = db.reopen_archived_subtree(
+        TASK_ID,
+        3,
+        "40000000-0000-0000-0000-000000000096",
+        metadata("reopen-active-task"),
+    );
+    assert!(matches!(active_reopen, Err(DomainError::NotArchived)));
+
+    db.archive_subtree(
+        TASK_ID,
+        3,
+        "40000000-0000-0000-0000-000000000095",
+        metadata("rearchive-task"),
+    )
+    .unwrap();
+    db.permanently_delete_archived_subtree(TASK_ID, 4, metadata("delete-archived-task"))
         .unwrap();
     assert!(db.list_archived_project_task_tree().unwrap().is_empty());
     assert!(matches!(db.get_task(TASK_ID), Err(DomainError::NotFound)));
@@ -1317,7 +1353,7 @@ fn pending_migration_checkpoints_wal_and_creates_verified_online_backup() {
         db.connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
     drop(db);
 
@@ -1500,7 +1536,7 @@ fn formal_schema_v1_contains_all_tables_indexes_and_guards() {
         db.connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
     assert_eq!(
         db.connection
@@ -1508,7 +1544,7 @@ fn formal_schema_v1_contains_all_tables_indexes_and_guards() {
                 row.get::<_, i64>(0)
             })
             .unwrap(),
-        4
+        5
     );
     let tables = schema_objects(&db.connection, "table");
     assert_eq!(
@@ -1536,6 +1572,7 @@ fn formal_schema_v1_contains_all_tables_indexes_and_guards() {
         "progress_event_source_identity",
         "progress_events_subject_occurred",
         "resource_bindings_locator",
+        "tasks_quick_item",
         "work_nodes_kind_status",
         "work_nodes_archive_parent_position",
         "work_nodes_parent_position",
@@ -1903,6 +1940,22 @@ fn backlog_edit_discard_and_promotion_are_atomic_and_idempotent() {
         )
         .unwrap();
     assert!(replay.replayed);
+    let conflicting_replay = db.promote_backlog(
+        second_backlog_id,
+        PromotionTarget::Task(NewTask {
+            id: TASK_ID,
+            parent_id: PROJECT_ID,
+            key: "promoted-task",
+            title: "Changed retry payload",
+            position: 3,
+        }),
+        1,
+        metadata("backlog-promote-task"),
+    );
+    assert!(matches!(
+        conflicting_replay,
+        Err(DomainError::IdempotencyConflict)
+    ));
     assert_eq!(db.node_count(NodeKind::Task).unwrap(), 1);
     let source = db.get_backlog(second_backlog_id).unwrap();
     assert_eq!(source.backlog_status, "promoted");
@@ -1954,6 +2007,284 @@ fn backlog_edit_discard_and_promotion_are_atomic_and_idempotent() {
             .as_deref(),
         Some(promoted_project_id)
     );
+}
+
+#[test]
+fn backlog_projection_filters_and_orders_with_root_hidden_parent_breadcrumbs() {
+    let mut db = Database::open_in_memory().unwrap();
+    let nested_project_id = "10000000-0000-0000-0000-000000000002";
+    let project_backlog_id = "30000000-0000-0000-0000-000000000002";
+    let root_backlog_id = "30000000-0000-0000-0000-000000000003";
+    let promoted_backlog_id = "30000000-0000-0000-0000-000000000004";
+    let promoted_task_id = "20000000-0000-0000-0000-000000000002";
+
+    create(
+        &mut db,
+        node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "platform", 0),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            nested_project_id,
+            NodeKind::Project,
+            PROJECT_ID,
+            "desktop",
+            0,
+        ),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(TASK_ID, NodeKind::Task, nested_project_id, "workflow", 0),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(BACKLOG_ID, NodeKind::Backlog, TASK_ID, "later", 2),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(project_backlog_id, NodeKind::Backlog, TASK_ID, "first", 1),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            root_backlog_id,
+            NodeKind::Backlog,
+            SYSTEM_ROOT_ID,
+            "root-idea",
+            1,
+        ),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            promoted_backlog_id,
+            NodeKind::Backlog,
+            TASK_ID,
+            "promoted",
+            3,
+        ),
+    )
+    .unwrap();
+
+    db.update_backlog(
+        project_backlog_id,
+        BacklogPatch {
+            kind: Some(BacklogKind::Research),
+            priority: Some(Priority::High),
+            tags_json: Some("[\"rust\",\"desktop\"]"),
+            ..BacklogPatch::default()
+        },
+        1,
+        metadata("projection-edit"),
+    )
+    .unwrap();
+    db.discard_backlog(BACKLOG_ID, 1, metadata("projection-discard"))
+        .unwrap();
+    db.promote_backlog(
+        promoted_backlog_id,
+        PromotionTarget::Task(NewTask {
+            id: promoted_task_id,
+            parent_id: nested_project_id,
+            key: "promoted-task",
+            title: "Promoted task",
+            position: 1,
+        }),
+        1,
+        metadata("projection-promote"),
+    )
+    .unwrap();
+
+    let active = db.list_backlog(&BacklogFilter::default()).unwrap();
+    assert_eq!(
+        active
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![root_backlog_id, project_backlog_id]
+    );
+    assert!(active[0].parent_breadcrumb.is_empty());
+    assert_eq!(
+        active[1].parent_breadcrumb,
+        vec!["platform", "desktop", "workflow"]
+    );
+    assert_eq!(active[1].tags, vec!["rust", "desktop"]);
+
+    let filtered = db
+        .list_backlog(&BacklogFilter {
+            parent_id: Some(TASK_ID.to_owned()),
+            kind: Some(BacklogKind::Research),
+            status: Some(BacklogStatus::Captured),
+            priority: Some(Priority::High),
+            tag: Some("rust".to_owned()),
+        })
+        .unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, project_backlog_id);
+
+    let discarded = db
+        .list_backlog(&BacklogFilter {
+            status: Some(BacklogStatus::Discarded),
+            ..BacklogFilter::default()
+        })
+        .unwrap();
+    assert_eq!(discarded.len(), 1);
+    assert_eq!(discarded[0].id, BACKLOG_ID);
+
+    db.archive_subtree(
+        PROJECT_ID,
+        1,
+        "40000000-0000-0000-0000-000000000099",
+        metadata("projection-archive-parent"),
+    )
+    .unwrap();
+    let after_archive = db.list_backlog(&BacklogFilter::default()).unwrap();
+    assert_eq!(after_archive.len(), 1);
+    assert_eq!(after_archive[0].id, root_backlog_id);
+
+    let integrity = db.integrity_report().unwrap();
+    assert_eq!(integrity.integrity, "ok");
+    assert_eq!(integrity.foreign_key_violations, 0);
+    assert_eq!(integrity.invariant_violations, 0);
+}
+
+#[test]
+fn backlog_move_is_explicit_atomic_idempotent_and_creates_no_progress_event() {
+    let mut db = Database::open_in_memory().unwrap();
+    let target_backlog_id = "20000000-0000-0000-0000-000000000088";
+    create(
+        &mut db,
+        node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "project", 0),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(TASK_ID, NodeKind::Task, PROJECT_ID, "task", 0),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(BACKLOG_ID, NodeKind::Backlog, PROJECT_ID, "idea", 1),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            target_backlog_id,
+            NodeKind::Backlog,
+            TASK_ID,
+            "target-idea",
+            0,
+        ),
+    )
+    .unwrap();
+
+    let moved = db
+        .move_backlog(BACKLOG_ID, TASK_ID, Some(0), 1, metadata("move-backlog"))
+        .unwrap();
+    assert_eq!(moved.revision, 2);
+    assert!(!moved.replayed);
+    let items = db
+        .list_backlog(&BacklogFilter {
+            parent_id: Some(TASK_ID.into()),
+            ..BacklogFilter::default()
+        })
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, BACKLOG_ID);
+    assert_eq!(items[1].id, target_backlog_id);
+    let item = &items[0];
+    assert_eq!(item.id, BACKLOG_ID);
+    assert_eq!(item.parent_breadcrumb, vec!["project", "task"]);
+    assert!(db.progress_timeline(BACKLOG_ID).unwrap().is_empty());
+
+    let replay = db
+        .move_backlog(BACKLOG_ID, TASK_ID, Some(0), 1, metadata("move-backlog"))
+        .unwrap();
+    assert!(replay.replayed);
+    assert_eq!(replay.revision, 2);
+
+    let invalid = db.move_backlog(BACKLOG_ID, BACKLOG_ID, None, 2, metadata("move-invalid"));
+    assert!(invalid.is_err());
+    assert_eq!(db.get_backlog(BACKLOG_ID).unwrap().parent_id, TASK_ID);
+}
+
+#[test]
+fn backlog_quick_add_and_today_quick_items_share_the_core_without_entering_projects() {
+    let mut db = Database::open_in_memory().unwrap();
+    let quick_id = "20000000-0000-0000-0000-000000000099";
+
+    let created_backlog = db
+        .create_backlog(
+            NewBacklog {
+                id: BACKLOG_ID,
+                parent_id: SYSTEM_ROOT_ID,
+                key: "capture-review-feedback",
+                title: "Capture review feedback",
+                notes: Some("One compact description"),
+                kind: BacklogKind::Idea,
+                priority: Priority::Medium,
+                tags_json: "[\"review\"]",
+            },
+            metadata("create-backlog-ui"),
+        )
+        .unwrap();
+    assert_eq!(created_backlog.revision, 1);
+    let backlog = db.get_backlog(BACKLOG_ID).unwrap();
+    assert_eq!(backlog.notes.as_deref(), Some("One compact description"));
+    assert_eq!(backlog.tags_json, "[\"review\"]");
+
+    let created_quick = db
+        .create_quick_item(
+            quick_id,
+            "Send the review response",
+            EVENT_ID,
+            metadata("create-quick-item"),
+        )
+        .unwrap();
+    assert_eq!(created_quick.revision, 1);
+    let today = db.list_today().unwrap();
+    assert_eq!(today.len(), 1);
+    assert_eq!(today[0].node_id, quick_id);
+    assert_eq!(today[0].title, "Send the review response");
+    assert!(today[0].is_quick_item);
+    assert!(
+        db.list_project_task_tree()
+            .unwrap()
+            .iter()
+            .all(|item| item.id != quick_id)
+    );
+
+    let replay = db
+        .create_quick_item(
+            quick_id,
+            "Send the review response",
+            EVENT_ID,
+            metadata("create-quick-item"),
+        )
+        .unwrap();
+    assert!(replay.replayed);
+    let conflict = db.create_quick_item(
+        quick_id,
+        "Changed description",
+        EVENT_ID,
+        metadata("create-quick-item"),
+    );
+    assert!(matches!(conflict, Err(DomainError::IdempotencyConflict)));
+
+    db.delete_quick_item(quick_id, 1, metadata("delete-quick-item"))
+        .unwrap();
+    assert!(db.list_today().unwrap().is_empty());
+    assert_eq!(db.node_count(NodeKind::Task).unwrap(), 0);
+    let integrity = db.integrity_report().unwrap();
+    assert_eq!(integrity.integrity, "ok");
+    assert_eq!(integrity.foreign_key_violations, 0);
+    assert_eq!(integrity.invariant_violations, 0);
 }
 
 fn schema_objects(connection: &Connection, object_type: &str) -> Vec<String> {
@@ -3295,6 +3626,108 @@ fn shared_application_contract_drives_the_core_without_adapter_rules() {
         serde_json::to_value(Query::ListToday).unwrap(),
         serde_json::json!({ "type": "list_today" })
     );
+}
+
+#[test]
+fn backlog_application_contract_exposes_query_edit_discard_reorder_and_promotion() {
+    use crate::application::{
+        Application, BacklogPromotionTarget, Command, CommandResult, DiscardBacklogCommand,
+        MoveBacklogCommand, PromoteBacklogCommand, Query, QueryResult, ReorderNodeCommand,
+        TextUpdate, UpdateBacklogCommand,
+    };
+
+    let second_backlog_id = "30000000-0000-0000-0000-000000000002";
+    let promoted_task_id = "20000000-0000-0000-0000-000000000009";
+    let mut database = Database::open_in_memory().unwrap();
+    create(
+        &mut database,
+        node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "project", 0),
+    )
+    .unwrap();
+    create(
+        &mut database,
+        node(BACKLOG_ID, NodeKind::Backlog, PROJECT_ID, "first", 0),
+    )
+    .unwrap();
+    create(
+        &mut database,
+        node(
+            second_backlog_id,
+            NodeKind::Backlog,
+            PROJECT_ID,
+            "second",
+            1,
+        ),
+    )
+    .unwrap();
+    let mut application = Application::new(database);
+
+    application
+        .execute(Command::UpdateBacklog(UpdateBacklogCommand {
+            node_id: BACKLOG_ID.into(),
+            title: Some("Edited".into()),
+            notes: Some(TextUpdate::Set("Notes".into())),
+            kind: Some(BacklogKind::Research),
+            priority: Some(Priority::High),
+            tags: Some(vec!["rust".into(), "desktop".into()]),
+            expected_revision: 1,
+            context: contract_context("contract-edit-backlog"),
+        }))
+        .unwrap();
+    application
+        .execute(Command::ReorderNode(ReorderNodeCommand {
+            node_id: second_backlog_id.into(),
+            target_position: 0,
+            expected_revision: 1,
+            context: contract_context("contract-reorder-backlog"),
+        }))
+        .unwrap();
+    application
+        .execute(Command::MoveBacklog(MoveBacklogCommand {
+            node_id: BACKLOG_ID.into(),
+            parent_id: SYSTEM_ROOT_ID.into(),
+            target_position: None,
+            expected_revision: 3,
+            context: contract_context("contract-move-backlog"),
+        }))
+        .unwrap();
+    application
+        .execute(Command::DiscardBacklog(DiscardBacklogCommand {
+            node_id: BACKLOG_ID.into(),
+            expected_revision: 4,
+            context: contract_context("contract-discard-backlog"),
+        }))
+        .unwrap();
+    let promoted = application
+        .execute(Command::PromoteBacklog(PromoteBacklogCommand {
+            backlog_id: second_backlog_id.into(),
+            target: BacklogPromotionTarget::Task {
+                id: promoted_task_id.into(),
+                parent_id: PROJECT_ID.into(),
+                key: "promoted-task".into(),
+                title: "Promoted task".into(),
+                position: None,
+            },
+            expected_revision: 2,
+            context: contract_context("contract-promote-backlog"),
+        }))
+        .unwrap();
+    assert!(matches!(promoted, CommandResult::Promotion(_)));
+
+    let QueryResult::Backlog(items) = application
+        .query(Query::ListBacklog {
+            filter: BacklogFilter {
+                status: Some(BacklogStatus::Promoted),
+                ..BacklogFilter::default()
+            },
+        })
+        .unwrap()
+    else {
+        panic!("unexpected Backlog query result");
+    };
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, second_backlog_id);
+    assert_eq!(items[0].promoted_node_id.as_deref(), Some(promoted_task_id));
 }
 
 fn contract_context(idempotency_key: &str) -> crate::application::CommandContext {

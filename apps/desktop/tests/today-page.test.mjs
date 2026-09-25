@@ -109,6 +109,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     path_titles: ["Karazhan"],
     direct_child_tasks: [],
     has_steps: false,
+    is_quick_item: false,
   };
   const parentTask = {
     node_id: "task-1",
@@ -116,6 +117,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     path_titles: ["Karazhan", "Desktop", "Polish Today"],
     direct_child_tasks: [{ id: "child-1" }],
     has_steps: false,
+    is_quick_item: false,
   };
   const leafTask = {
     node_id: "task-2",
@@ -123,12 +125,22 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     path_titles: ["Karazhan", "Ship build"],
     direct_child_tasks: [],
     has_steps: false,
+    is_quick_item: false,
+  };
+  const quickItem = {
+    node_id: "quick-1",
+    kind: "task",
+    path_titles: ["Call supplier"],
+    direct_child_tasks: [],
+    has_steps: true,
+    is_quick_item: true,
   };
 
   assert.equal(todayPath(parentTask), "Karazhan › Desktop › Polish Today");
   assert.equal(isTodayItemExpandable(project), true);
   assert.equal(isTodayItemExpandable(parentTask), true);
   assert.equal(isTodayItemExpandable(leafTask), false);
+  assert.equal(isTodayItemExpandable(quickItem), false);
 });
 
 test("leaf Task checkbox maps directly to done and ready", () => {

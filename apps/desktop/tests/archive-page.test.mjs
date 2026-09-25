@@ -6,6 +6,7 @@ import {
   archiveProjectTask,
   loadArchivedProjectTaskTree,
   permanentlyDeleteArchivedProjectTask,
+  reopenArchivedProjectTask,
 } from "../src/features/projects.ts";
 
 test("archive actions use the shared command/query contract", async () => {
@@ -23,12 +24,15 @@ test("archive actions use the shared command/query contract", async () => {
 
   assert.deepEqual(await loadArchivedProjectTaskTree(client), [{ id: "archived" }]);
   await archiveProjectTask(client, "node-1", 4);
-  await permanentlyDeleteArchivedProjectTask(client, "node-1", 5);
+  await reopenArchivedProjectTask(client, "node-1", 5);
+  await permanentlyDeleteArchivedProjectTask(client, "node-1", 6);
   assert.equal(commands[0].type, "archive_subtree");
   assert.equal(commands[0].payload.node_id, "node-1");
   assert.equal(commands[0].payload.expected_revision, 4);
-  assert.equal(commands[1].type, "permanently_delete_archived_subtree");
+  assert.equal(commands[1].type, "reopen_archived_subtree");
   assert.equal(commands[1].payload.expected_revision, 5);
+  assert.equal(commands[2].type, "permanently_delete_archived_subtree");
+  assert.equal(commands[2].payload.expected_revision, 6);
 });
 
 test("Archive is a dedicated navigation page with confirmed permanent deletion", async () => {
@@ -41,6 +45,8 @@ test("Archive is a dedicated navigation page with confirmed permanent deletion",
 
   assert.match(app, />\s*Archive\s*</);
   assert.match(page, /Permanently delete/);
+  assert.match(page, />Reopen</);
+  assert.match(page, /reopenArchivedProjectTask/);
   assert.match(page, /cannot be undone/);
   assert.match(page, /descendant/);
   assert.match(styles, /\.workspace > \.context-menu\s*\{[\s\S]*?width:\s*max-content/);

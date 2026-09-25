@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 
 import ProjectsPage from "./components/ProjectsPage";
 import ArchivePage from "./components/ArchivePage";
+import BacklogPage from "./components/BacklogPage";
 import TodayOpenInZed from "./components/TodayOpenInZed";
 import TodayRecentSteps from "./components/TodayRecentSteps";
 import WorkItemQuickControls from "./components/WorkItemQuickControls";
@@ -9,6 +10,8 @@ import AddStepModal, { type AddStepTarget } from "./components/AddStepModal";
 import { appendManualStep } from "./features/projects";
 import {
   allTodayNodeIds,
+  createQuickItem,
+  deleteQuickItem,
   describeClientError,
   directChildTaskRows,
   isTodayItemExpandable,
@@ -35,7 +38,7 @@ type MembershipFeedback = {
 type StepMenuState = AddStepTarget & { x: number; y: number };
 
 export default function App() {
-  const [activePage, setActivePage] = useState<"today" | "projects" | "archive">("today");
+  const [activePage, setActivePage] = useState<"today" | "projects" | "backlog" | "archive">("today");
   const [today, setToday] = useState<TodayState>({ status: "loading" });
   const [expandedNodeIds, setExpandedNodeIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -53,6 +56,7 @@ export default function App() {
     useState<MembershipFeedback>({ status: "idle", message: "" });
   const [stepMenu, setStepMenu] = useState<StepMenuState | null>(null);
   const [stepTarget, setStepTarget] = useState<AddStepTarget | null>(null);
+  const [quickItemOpen, setQuickItemOpen] = useState(false);
   const [stepsVersion, setStepsVersion] = useState(0);
 
   useEffect(() => {
@@ -135,6 +139,32 @@ export default function App() {
       setExpandedNodeIds((current) => new Set(current).add(nodeId));
       setStepsVersion((current) => current + 1);
       setStepTarget(null);
+      setMembershipFeedback({ status: "idle", message: "" });
+    } catch (error) {
+      setMembershipFeedback({ status: "error", message: describeClientError(error) });
+    }
+  }
+
+  async function handleCreateQuickItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const description = String(new FormData(event.currentTarget).get("description") ?? "").trim();
+    if (!description) return;
+    setMembershipFeedback({ status: "saving", message: "Adding quick item…" });
+    try {
+      await createQuickItem(karazhanClient, description);
+      acceptRefreshedToday(await loadToday());
+      setQuickItemOpen(false);
+      setMembershipFeedback({ status: "idle", message: "" });
+    } catch (error) {
+      setMembershipFeedback({ status: "error", message: describeClientError(error) });
+    }
+  }
+
+  async function handleDeleteQuickItem(item: TodayItem) {
+    setMembershipFeedback({ status: "saving", message: "Deleting quick item…" });
+    try {
+      await deleteQuickItem(karazhanClient, item.node_id, item.work_revision);
+      acceptRefreshedToday(await loadToday());
       setMembershipFeedback({ status: "idle", message: "" });
     } catch (error) {
       setMembershipFeedback({ status: "error", message: describeClientError(error) });
@@ -244,6 +274,14 @@ export default function App() {
             Projects &amp; Tasks
           </button>
           <button
+            className={`nav-item${activePage === "backlog" ? " active" : ""}`}
+            type="button"
+            aria-current={activePage === "backlog" ? "page" : undefined}
+            onClick={() => setActivePage("backlog")}
+          >
+            Backlog
+          </button>
+          <button
             className={`nav-item${activePage === "archive" ? " active" : ""}`}
             type="button"
             aria-current={activePage === "archive" ? "page" : undefined}
@@ -257,13 +295,13 @@ export default function App() {
       <main className="workspace" id={activePage}>
         {activePage === "projects" ? (
           <ProjectsPage onTodayChanged={acceptRefreshedToday} />
+        ) : activePage === "backlog" ? (
+          <BacklogPage />
         ) : activePage === "archive" ? (
           <ArchivePage />
         ) : (
           <>
-        <header className="page-header">
-          <h1>Today</h1>
-        </header>
+        <header className="page-header projects-header"><div className="projects-heading"><div className="projects-add-wrap"><button className="projects-add" type="button" aria-label="Create quick item" onClick={() => setQuickItemOpen(true)}><span aria-hidden="true">+</span></button></div><h1>Today</h1></div></header>
 
         {today.status === "ready" && expandableItems.length > 0 && (
           <div className="today-toolbar" aria-label="Today display controls">
@@ -325,6 +363,16 @@ export default function App() {
                 const expandable = isTodayItemExpandable(item);
                 const leafTask = item.kind === "task" && childTasks.length === 0;
                 const deleteRevealed = revealedDeleteNodeId === item.node_id;
+                if (item.is_quick_item) return (
+                  <li className={`today-row quick-item-row${draggedNodeId === item.node_id ? " dragging" : ""}${dropTargetNodeId === item.node_id ? " drop-target" : ""}`} data-node-id={item.node_id} data-position={item.position} key={item.node_id} onPointerEnter={() => { if (draggedNodeId !== null && draggedNodeId !== item.node_id) setDropTargetNodeId(item.node_id); }} onPointerUp={() => { if (draggedNodeId !== null) void handleDrop(targetPosition); }} onPointerCancel={() => { setDraggedNodeId(null); setDropTargetNodeId(null); }}>
+                    <div className="quick-item-content">
+                      <button className="drag-handle" type="button" disabled={membershipBusy} aria-label={`Drag ${item.title}`} onPointerDown={(event) => { event.preventDefault(); setDraggedNodeId(item.node_id); setDropTargetNodeId(null); }}><span aria-hidden="true">⠿</span></button>
+                      <WorkItemQuickControls nodeId={item.node_id} revision={item.work_revision} status={item.status} priority={item.priority} blocker={item.blocker} label={item.title} checkbox minimal onSaved={refreshAfterWorkItemSave} />
+                      <span className="quick-item-description">{item.title}</span>
+                      <button className="quick-item-delete" type="button" disabled={membershipBusy} onClick={() => void handleDeleteQuickItem(item)}>Delete</button>
+                    </div>
+                  </li>
+                );
                 return (
                   <li
                     className={`today-row${draggedNodeId === item.node_id ? " dragging" : ""}${dropTargetNodeId === item.node_id ? " drop-target" : ""}`}
@@ -492,6 +540,7 @@ export default function App() {
         </section>
         {stepMenu && <><button className="menu-dismiss" type="button" aria-label="Close menu" onClick={() => setStepMenu(null)} /><div className="action-menu context-menu" role="menu" style={{ left: stepMenu.x, top: stepMenu.y }}><button type="button" role="menuitem" onClick={() => { setStepTarget({ id: stepMenu.id, title: stepMenu.title, revision: stepMenu.revision }); setStepMenu(null); }}>Add step</button></div></>}
         {stepTarget && <AddStepModal target={stepTarget} onCancel={() => setStepTarget(null)} onSubmit={(summary, status) => void handleAddStep(summary, status)} />}
+        {quickItemOpen && <div className="modal-backdrop" role="presentation"><form className="modal-card quick-item-modal" aria-label="New Quick item" onSubmit={(event) => void handleCreateQuickItem(event)}><h2>New Quick item</h2><label>Description<input name="description" autoFocus required /></label><div className="modal-actions"><button type="button" onClick={() => setQuickItemOpen(false)}>Cancel</button><button className="primary-action" type="submit">Add</button></div></form></div>}
           </>
         )}
       </main>

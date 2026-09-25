@@ -6,6 +6,7 @@ import {
   loadArchivedProjectTaskTree,
   permanentlyDeleteArchivedProjectTask,
   projectTreePath,
+  reopenArchivedProjectTask,
   toggleTreeNode,
   type ProjectTaskTreeNode,
 } from "../features/projects.ts";
@@ -25,12 +26,14 @@ function ArchivedBranch({
   nodes,
   expanded,
   onToggle,
+  onReopen,
   onDelete,
   nested = false,
 }: {
   nodes: ProjectTaskTreeNode[];
   expanded: ReadonlySet<string>;
   onToggle: (nodeId: string) => void;
+  onReopen: (node: ProjectTaskTreeNode) => void;
   onDelete: (node: ProjectTaskTreeNode) => void;
   nested?: boolean;
 }) {
@@ -50,9 +53,10 @@ function ArchivedBranch({
               <span className={`tree-kind ${node.item.kind}`} aria-hidden="true" />
               <span className="tree-row-copy"><span className="tree-path">{projectTreePath(node)}</span></span>
               <span className="tree-kind-label">{node.item.kind}</span>
+              <button className="tree-action" type="button" onClick={() => onReopen(node)}>Reopen</button>
               <button className="tree-action permanent-delete-action" type="button" onClick={() => onDelete(node)}>Permanently delete</button>
             </div>
-            {hasChildren && isExpanded && <ArchivedBranch nodes={node.children} nested expanded={expanded} onToggle={onToggle} onDelete={onDelete} />}
+            {hasChildren && isExpanded && <ArchivedBranch nodes={node.children} nested expanded={expanded} onToggle={onToggle} onReopen={onReopen} onDelete={onDelete} />}
           </li>
         );
       })}
@@ -96,6 +100,14 @@ export default function ArchivePage() {
     } catch (deleteError) { setError(describeClientError(deleteError)); }
   }
 
+  async function handleReopen(node: ProjectTaskTreeNode) {
+    try {
+      await reopenArchivedProjectTask(karazhanClient, node.item.id, node.item.revision);
+      setError(null);
+      await refresh();
+    } catch (reopenError) { setError(describeClientError(reopenError)); }
+  }
+
   return (
     <>
       <header className="page-header"><h1>Archive</h1></header>
@@ -104,7 +116,7 @@ export default function ArchivePage() {
         {state.status === "loading" && <p className="state-message" role="status">Loading Archive…</p>}
         {state.status === "error" && <div className="state-message error" role="alert"><strong>Archive could not be loaded.</strong><span>{state.message}</span></div>}
         {state.status === "ready" && state.roots.length === 0 && <div className="state-message empty"><strong>Archive is empty.</strong></div>}
-        {state.status === "ready" && state.roots.length > 0 && <ArchivedBranch nodes={state.roots} expanded={expanded} onToggle={(nodeId) => setExpanded((current) => toggleTreeNode(current, nodeId))} onDelete={setDeleteTarget} />}
+        {state.status === "ready" && state.roots.length > 0 && <ArchivedBranch nodes={state.roots} expanded={expanded} onToggle={(nodeId) => setExpanded((current) => toggleTreeNode(current, nodeId))} onReopen={(node) => void handleReopen(node)} onDelete={setDeleteTarget} />}
       </section>
 
       {deleteTarget && (

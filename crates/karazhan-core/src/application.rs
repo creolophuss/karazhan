@@ -6,10 +6,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActorType, Channel, CommandMetadata, Database, DomainError, LegacyApplyResult,
-    LegacyDryRunReport, LegacyDryRunScope, MutationResult, NewProgressEvent, NewProject, NewTask,
-    Priority, ProgressEvent, ProgressEventKind, Project, ProjectTaskItem, Task, TextChange,
-    TodayItem, WorkItemPatch, WorkStatus, dry_run_legacy_source,
+    ActorType, BacklogFilter, BacklogItem, BacklogKind, BacklogPatch, Channel, CommandMetadata,
+    Database, DomainError, LegacyApplyResult, LegacyDryRunReport, LegacyDryRunScope,
+    MutationResult, NewBacklog, NewProgressEvent, NewProject, NewTask, Priority, ProgressEvent,
+    ProgressEventKind, Project, ProjectTaskItem, PromotionResult, PromotionTarget, Task,
+    TextChange, TodayItem, WorkItemPatch, WorkStatus, dry_run_legacy_source,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +55,36 @@ pub struct CreateTaskCommand {
     #[serde(default)]
     pub summary: Option<String>,
     pub position: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateBacklogCommand {
+    pub id: String,
+    pub parent_id: String,
+    pub key: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub kind: BacklogKind,
+    pub priority: Priority,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateQuickItemCommand {
+    pub id: String,
+    pub description: String,
+    pub event_id: String,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteQuickItemCommand {
+    pub node_id: String,
+    pub expected_revision: i64,
     pub context: CommandContext,
 }
 
@@ -134,8 +165,84 @@ pub struct ArchiveSubtreeCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReopenArchivedSubtreeCommand {
+    pub node_id: String,
+    pub expected_revision: i64,
+    pub event_id: String,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PermanentlyDeleteArchivedSubtreeCommand {
     pub node_id: String,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateBacklogCommand {
+    pub node_id: String,
+    pub title: Option<String>,
+    pub notes: Option<TextUpdate>,
+    pub kind: Option<BacklogKind>,
+    pub priority: Option<Priority>,
+    pub tags: Option<Vec<String>>,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscardBacklogCommand {
+    pub node_id: String,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoveBacklogCommand {
+    pub node_id: String,
+    pub parent_id: String,
+    #[serde(default)]
+    pub target_position: Option<usize>,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReorderNodeCommand {
+    pub node_id: String,
+    pub target_position: usize,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BacklogPromotionTarget {
+    Project {
+        id: String,
+        parent_id: String,
+        key: String,
+        title: String,
+        #[serde(default)]
+        position: Option<i64>,
+        slug: Option<String>,
+        context_path: Option<String>,
+    },
+    Task {
+        id: String,
+        parent_id: String,
+        key: String,
+        title: String,
+        #[serde(default)]
+        position: Option<i64>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromoteBacklogCommand {
+    pub backlog_id: String,
+    pub target: BacklogPromotionTarget,
     pub expected_revision: i64,
     pub context: CommandContext,
 }
@@ -151,12 +258,21 @@ pub struct LegacyApplyCommand {
 pub enum Command {
     CreateProject(CreateProjectCommand),
     CreateTask(CreateTaskCommand),
+    CreateBacklog(CreateBacklogCommand),
+    CreateQuickItem(CreateQuickItemCommand),
+    DeleteQuickItem(DeleteQuickItemCommand),
     UpdateWorkItem(UpdateWorkItemCommand),
     AddToday(AddTodayCommand),
     RemoveToday(RemoveTodayCommand),
     ReorderToday(ReorderTodayCommand),
     AppendProgress(AppendProgressCommand),
+    UpdateBacklog(UpdateBacklogCommand),
+    DiscardBacklog(DiscardBacklogCommand),
+    MoveBacklog(MoveBacklogCommand),
+    ReorderNode(ReorderNodeCommand),
+    PromoteBacklog(PromoteBacklogCommand),
     ArchiveSubtree(ArchiveSubtreeCommand),
+    ReopenArchivedSubtree(ReopenArchivedSubtreeCommand),
     PermanentlyDeleteArchivedSubtree(PermanentlyDeleteArchivedSubtreeCommand),
     LegacyApply(LegacyApplyCommand),
 }
@@ -165,6 +281,7 @@ pub enum Command {
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum CommandResult {
     Mutation(MutationResult),
+    Promotion(PromotionResult),
     LegacyApply(Box<LegacyApplyResult>),
 }
 
@@ -181,6 +298,10 @@ pub enum Query {
     ListTasks,
     ListProjectTaskTree,
     ListArchivedProjectTaskTree,
+    ListBacklog {
+        #[serde(default)]
+        filter: BacklogFilter,
+    },
     ListToday,
     RecentProgress {
         node_id: String,
@@ -209,6 +330,7 @@ pub enum QueryResult {
     Task(Task),
     Tasks(Vec<Task>),
     ProjectTaskTree(Vec<ProjectTaskItem>),
+    Backlog(Vec<BacklogItem>),
     Today(Vec<TodayItem>),
     ProgressEvents(Vec<ProgressEvent>),
     ContextPath(Option<String>),
@@ -259,6 +381,33 @@ impl Application {
                     position: command.position,
                 },
                 command.summary.as_deref(),
+                command.context.metadata(),
+            )?,
+            Command::CreateBacklog(command) => {
+                let tags_json = serde_json::to_string(&command.tags)?;
+                self.database.create_backlog(
+                    NewBacklog {
+                        id: &command.id,
+                        parent_id: &command.parent_id,
+                        key: &command.key,
+                        title: &command.title,
+                        notes: command.description.as_deref(),
+                        kind: command.kind,
+                        priority: command.priority,
+                        tags_json: &tags_json,
+                    },
+                    command.context.metadata(),
+                )?
+            }
+            Command::CreateQuickItem(command) => self.database.create_quick_item(
+                &command.id,
+                &command.description,
+                &command.event_id,
+                command.context.metadata(),
+            )?,
+            Command::DeleteQuickItem(command) => self.database.delete_quick_item(
+                &command.node_id,
+                command.expected_revision,
                 command.context.metadata(),
             )?,
             Command::UpdateWorkItem(command) => {
@@ -321,7 +470,107 @@ impl Application {
                 command.expected_revision,
                 command.context.metadata(),
             )?,
+            Command::UpdateBacklog(command) => {
+                let tags_json = command
+                    .tags
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                self.database.update_backlog(
+                    &command.node_id,
+                    BacklogPatch {
+                        title: command.title.as_deref(),
+                        notes: command
+                            .notes
+                            .as_ref()
+                            .map_or(TextChange::Keep, TextUpdate::as_change),
+                        kind: command.kind,
+                        priority: command.priority,
+                        tags_json: tags_json.as_deref(),
+                    },
+                    command.expected_revision,
+                    command.context.metadata(),
+                )?
+            }
+            Command::DiscardBacklog(command) => self.database.discard_backlog(
+                &command.node_id,
+                command.expected_revision,
+                command.context.metadata(),
+            )?,
+            Command::MoveBacklog(command) => self.database.move_backlog(
+                &command.node_id,
+                &command.parent_id,
+                command.target_position,
+                command.expected_revision,
+                command.context.metadata(),
+            )?,
+            Command::ReorderNode(command) => self.database.reorder_node(
+                &command.node_id,
+                command.target_position,
+                command.expected_revision,
+                command.context.metadata(),
+            )?,
+            Command::PromoteBacklog(command) => {
+                let target = match &command.target {
+                    BacklogPromotionTarget::Project {
+                        id,
+                        parent_id,
+                        key,
+                        title,
+                        position,
+                        slug,
+                        context_path,
+                    } => {
+                        let project = NewProject {
+                            id,
+                            parent_id,
+                            key,
+                            title,
+                            position: position.unwrap_or_default(),
+                            slug: slug.as_deref(),
+                            context_path: context_path.as_deref(),
+                        };
+                        if position.is_some() {
+                            PromotionTarget::Project(project)
+                        } else {
+                            PromotionTarget::ProjectAtEnd(project)
+                        }
+                    }
+                    BacklogPromotionTarget::Task {
+                        id,
+                        parent_id,
+                        key,
+                        title,
+                        position,
+                    } => {
+                        let task = NewTask {
+                            id,
+                            parent_id,
+                            key,
+                            title,
+                            position: position.unwrap_or_default(),
+                        };
+                        if position.is_some() {
+                            PromotionTarget::Task(task)
+                        } else {
+                            PromotionTarget::TaskAtEnd(task)
+                        }
+                    }
+                };
+                return Ok(CommandResult::Promotion(self.database.promote_backlog(
+                    &command.backlog_id,
+                    target,
+                    command.expected_revision,
+                    command.context.metadata(),
+                )?));
+            }
             Command::ArchiveSubtree(command) => self.database.archive_subtree(
+                &command.node_id,
+                command.expected_revision,
+                &command.event_id,
+                command.context.metadata(),
+            )?,
+            Command::ReopenArchivedSubtree(command) => self.database.reopen_archived_subtree(
                 &command.node_id,
                 command.expected_revision,
                 &command.event_id,
@@ -356,6 +605,9 @@ impl Application {
             Query::ListArchivedProjectTaskTree => Ok(QueryResult::ProjectTaskTree(
                 self.database.list_archived_project_task_tree()?,
             )),
+            Query::ListBacklog { filter } => {
+                Ok(QueryResult::Backlog(self.database.list_backlog(&filter)?))
+            }
             Query::ListToday => Ok(QueryResult::Today(self.database.list_today()?)),
             Query::RecentProgress { node_id, limit } => Ok(QueryResult::ProgressEvents(
                 self.database.recent_progress_events(&node_id, limit)?,

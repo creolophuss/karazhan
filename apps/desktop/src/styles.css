@@ -103,12 +103,10 @@ nav {
   margin-bottom: 1.75rem;
 }
 
-#today h1 {
-  font-size: 3.25rem;
-}
-
+#today h1,
 #projects h1,
-#archive h1 {
+#archive h1,
+#backlog h1 {
   font-size: 3.25rem;
 }
 
@@ -480,7 +478,7 @@ h1 {
 }
 
 .archive-row {
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
 }
 
 .project-tree > li:first-child > .project-tree-row {
@@ -510,7 +508,9 @@ h1 {
   gap: 0.2rem;
 }
 
-.tree-path {
+.tree-path,
+.today-path,
+.backlog-copy strong {
   overflow: hidden;
   color: #6f685e;
   font-size: 0.9rem;
@@ -746,6 +746,44 @@ h1 {
   box-shadow: inset 0 3px #9b7041;
 }
 
+.quick-item-content {
+  display: grid;
+  grid-template-columns: 2.7rem 1.7rem minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 3.4rem;
+  padding-right: 0.8rem;
+}
+
+.quick-item-content > .quick-controls {
+  display: contents;
+}
+
+.quick-item-content > .quick-controls > input[type="checkbox"] {
+  grid-column: 2;
+  place-self: center;
+}
+
+.quick-item-description {
+  grid-column: 3;
+  color: #3d3832;
+  font-size: 0.9rem;
+}
+
+.quick-item-delete {
+  padding: 0.35rem 0.55rem;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #95534b;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.quick-item-delete:hover:not(:disabled),
+.quick-item-delete:focus-visible {
+  background: #f4e3df;
+}
+
 .today-row-header {
   position: relative;
   z-index: 1;
@@ -863,12 +901,6 @@ h1 {
 
 .today-path {
   display: block;
-  overflow: hidden;
-  color: #37322c;
-  font-size: 0.92rem;
-  font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .today-description {
@@ -1432,6 +1464,229 @@ h1 {
   white-space: nowrap;
 }
 
+.backlog-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(7rem, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+}
+
+.backlog-filters label,
+.backlog-editor label,
+.modal-card label {
+  display: grid;
+  gap: 0.3rem;
+  color: #746b5f;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.backlog-filters :is(select, input),
+.backlog-editor :is(input, textarea, select),
+.modal-card :is(input, textarea, select) {
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d9d1c5;
+  border-radius: 0.4rem;
+  color: #3f3a33;
+  background: #fffdf9;
+}
+
+.backlog-filters select {
+  padding-right: 1.2rem;
+  padding-left: 0;
+  border: 0;
+  background: transparent;
+}
+
+.backlog-filters input {
+  border: 1px solid #d9d1c5;
+  box-shadow: none;
+}
+
+.backlog-panel {
+  overflow: hidden;
+  border: 1px solid #ddd6ca;
+  border-radius: 0.8rem;
+  background: #fbf9f4;
+  box-shadow: 0 0.4rem 1.5rem rgb(60 48 32 / 5%);
+}
+
+.backlog-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.backlog-row + .backlog-row {
+  border-top: 1px solid #ebe5db;
+}
+
+.backlog-row.dragging {
+  opacity: 0.45;
+}
+
+.backlog-row.drop-target {
+  box-shadow: inset 0 3px #9b7041;
+}
+
+.backlog-row-main {
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 1fr) 5rem 4rem 7rem;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.7rem;
+  padding: 0.7rem 0.85rem;
+}
+
+.backlog-row .drag-handle {
+  color: #aaa196;
+  cursor: grab;
+}
+
+.backlog-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.backlog-copy small {
+  overflow: hidden;
+  color: #847c70;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backlog-meta {
+  padding: 0;
+  border: 0;
+  color: #695f53;
+  background: transparent;
+  font-size: 0.68rem;
+}
+
+.backlog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  color: #80633d;
+  font-size: 0.68rem;
+}
+
+.tree-action.danger,
+.inline-confirm button:first-of-type {
+  color: #9a433b;
+}
+
+.backlog-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 8rem 8rem;
+  align-items: end;
+  gap: 0.65rem;
+  padding: 0.8rem 1rem 1rem 2.8rem;
+  background: #f6f1e8;
+}
+
+.backlog-edit-title {
+  grid-column: 1 / 3;
+}
+
+.backlog-edit-tags,
+.backlog-edit-description {
+  grid-column: 1 / -1;
+}
+
+.backlog-editor .inline-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.backlog-row .tree-action,
+.backlog-editor .inline-actions button,
+#backlog .inline-confirm button,
+#backlog .modal-actions button {
+  border: 0;
+  color: #625b50;
+  background: transparent;
+}
+
+.backlog-row .tree-action:hover:not(:disabled),
+.backlog-row .tree-action:focus-visible,
+.backlog-editor .inline-actions button:hover,
+.backlog-editor .inline-actions button:focus-visible,
+#backlog .inline-confirm button:hover,
+#backlog .inline-confirm button:focus-visible,
+#backlog .modal-actions button:hover,
+#backlog .modal-actions button:focus-visible {
+  color: #2f2a24;
+  background: #e8e2d8;
+}
+
+.backlog-editor .inline-actions button {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.7rem;
+}
+
+.backlog-editor textarea {
+  min-height: 2.25rem;
+  resize: vertical;
+}
+
+.inline-actions,
+.inline-confirm,
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inline-actions button,
+.inline-confirm button,
+.modal-actions button {
+  padding: 0.48rem 0.7rem;
+  border: 1px solid #d9d1c5;
+  border-radius: 0.4rem;
+  background: #fffdf9;
+  cursor: pointer;
+}
+
+.inline-confirm {
+  align-items: center;
+  padding: 0.75rem 1rem 0.9rem 2.8rem;
+  color: #6b554d;
+  background: #f9e9e4;
+  font-size: 0.76rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(42 35 28 / 32%);
+}
+
+.modal-card {
+  display: grid;
+  width: min(28rem, calc(100vw - 2rem));
+  gap: 0.85rem;
+  padding: 1.2rem;
+  border: 1px solid #d9d1c5;
+  border-radius: 0.75rem;
+  background: #fbf9f4;
+  box-shadow: 0 1rem 3rem rgb(42 35 28 / 20%);
+}
+
+.modal-card h2,
+.promotion-preview {
+  margin: 0;
+}
+
+.promotion-preview {
+  color: #746b5f;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 720px) {
   .app-frame {
     grid-template-columns: 1fr;
@@ -1496,6 +1751,20 @@ h1 {
 
   .detailed-fields {
     grid-template-columns: 1fr;
+  }
+
+  .backlog-filters,
+  .backlog-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .backlog-row-main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .backlog-meta,
+  .backlog-tags {
+    grid-column: 2 / -1;
   }
 
   .save-feedback {

@@ -4,10 +4,31 @@ import test from "node:test";
 
 import {
   addTodayMembership,
+  createQuickItem,
+  deleteQuickItem,
   moveTodayItem,
   removeTodayMembership,
   reorderTodayMembership,
 } from "../src/features/today.ts";
+
+test("Today quick items use dedicated shared-core commands", async () => {
+  const commands = [];
+  const client = {
+    async execute(command) {
+      commands.push(command);
+      return { type: "mutation", payload: { revision: 1, replayed: false } };
+    },
+  };
+
+  await createQuickItem(client, "Reply to review", () => "quick-1");
+  await deleteQuickItem(client, "quick-1", 1, () => "delete-1");
+
+  assert.deepEqual(commands.map((command) => command.type), [
+    "create_quick_item",
+    "delete_quick_item",
+  ]);
+  assert.equal(commands[0].payload.description, "Reply to review");
+});
 
 test("Today membership actions map to the shared commands", async () => {
   const commands = [];
@@ -164,7 +185,11 @@ test("Today uses compact breadcrumb names, Task descriptions, and a fixed sideba
   assert.match(styles, /\.app-frame\s*\{[\s\S]*?height:\s*100%[\s\S]*?overflow:\s*hidden/);
   assert.match(styles, /\.sidebar\s*\{[\s\S]*?overflow:\s*hidden/);
   assert.match(styles, /\.workspace\s*\{[\s\S]*?overflow-y:\s*auto/);
-  assert.match(styles, /#today h1\s*\{[\s\S]*?font-size:\s*3\.25rem/);
+  assert.match(styles, /#today h1,[\s\S]*?#backlog h1\s*\{[\s\S]*?font-size:\s*3\.25rem/);
+  assert.match(app, /New Quick item/);
+  assert.match(app, /item\.is_quick_item/);
+  assert.match(app, /checkbox minimal/);
+  assert.match(app, /quick-item-delete/);
   assert.match(styles, /\.today-row-header\s*\{[\s\S]*?min-height:\s*4rem/);
   assert.match(styles, /\.today-row-header > \.quick-controls > input\[type="checkbox"\][\s\S]*?grid-row:\s*1/);
   assert.match(styles, /\.today-row-copy\s*\{[\s\S]*?grid-row:\s*1/);

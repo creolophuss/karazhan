@@ -27,6 +27,7 @@ interface WorkItemQuickControlsProps {
   blocker: string | null;
   label: string;
   checkbox?: boolean;
+  minimal?: boolean;
   onSaved?: (fields: { status: WorkStatus; priority: Priority; revision: number }) => void;
 }
 
@@ -42,6 +43,7 @@ export default function WorkItemQuickControls({
   blocker,
   label: itemLabel,
   checkbox = false,
+  minimal = false,
   onSaved,
 }: WorkItemQuickControlsProps) {
   const [revision, setRevision] = useState(initialRevision);
@@ -87,7 +89,7 @@ export default function WorkItemQuickControls({
           onChange={(event) => void persist(event.target.checked ? "done" : "ready", priority)}
         />
       )}
-      <label className="quick-select status">
+      {!minimal && <label className="quick-select status">
         <span className="visually-hidden">Status of {itemLabel}</span>
         <select
           className={`quick-status ${status}`}
@@ -98,8 +100,8 @@ export default function WorkItemQuickControls({
         >
           {STATUS_OPTIONS.map((option) => <option value={option} key={option}>{label(option)}</option>)}
         </select>
-      </label>
-      <label className="quick-select priority">
+      </label>}
+      {!minimal && <label className="quick-select priority">
         <span className="visually-hidden">Priority of {itemLabel}</span>
         <select
           className={`quick-priority ${priority}`}
@@ -110,7 +112,7 @@ export default function WorkItemQuickControls({
         >
           {PRIORITY_OPTIONS.map((option) => <option value={option} key={option}>{label(option)}</option>)}
         </select>
-      </label>
+      </label>}
       {(feedback.status === "conflict" || feedback.status === "error") && (
         <span className="compact-save-error" role="alert">{feedback.message}</span>
       )}

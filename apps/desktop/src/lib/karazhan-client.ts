@@ -18,6 +18,13 @@ export type WorkStatus =
   | "cancelled";
 export type Priority = "urgent" | "high" | "medium" | "low" | "none";
 export type ProgressEventKind = "progress" | "delivery";
+export type BacklogKind = "idea" | "problem" | "request" | "research";
+export type BacklogStatus =
+  | "captured"
+  | "considering"
+  | "ready"
+  | "promoted"
+  | "discarded";
 
 export interface CommandContext {
   idempotency_key: string;
@@ -49,6 +56,31 @@ export interface CreateTaskCommand {
   title: string;
   summary: string | null;
   position: number;
+  context: CommandContext;
+}
+
+export interface CreateBacklogCommand {
+  id: string;
+  parent_id: string;
+  key: string;
+  title: string;
+  description: string | null;
+  kind: BacklogKind;
+  priority: Priority;
+  tags: string[];
+  context: CommandContext;
+}
+
+export interface CreateQuickItemCommand {
+  id: string;
+  description: string;
+  event_id: string;
+  context: CommandContext;
+}
+
+export interface DeleteQuickItemCommand {
+  node_id: string;
+  expected_revision: number;
   context: CommandContext;
 }
 
@@ -105,8 +137,74 @@ export interface ArchiveSubtreeCommand {
   context: CommandContext;
 }
 
+export interface ReopenArchivedSubtreeCommand {
+  node_id: string;
+  expected_revision: number;
+  event_id: string;
+  context: CommandContext;
+}
+
 export interface PermanentlyDeleteArchivedSubtreeCommand {
   node_id: string;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export interface UpdateBacklogCommand {
+  node_id: string;
+  title: string | null;
+  notes: TextUpdate | null;
+  kind: BacklogKind | null;
+  priority: Priority | null;
+  tags: string[] | null;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export interface DiscardBacklogCommand {
+  node_id: string;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export interface MoveBacklogCommand {
+  node_id: string;
+  parent_id: string;
+  target_position: number | null;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export interface ReorderNodeCommand {
+  node_id: string;
+  target_position: number;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export type BacklogPromotionTarget =
+  | {
+      type: "project";
+      id: string;
+      parent_id: string;
+      key: string;
+      title: string;
+      position?: number;
+      slug: string | null;
+      context_path: string | null;
+    }
+  | {
+      type: "task";
+      id: string;
+      parent_id: string;
+      key: string;
+      title: string;
+      position?: number;
+    };
+
+export interface PromoteBacklogCommand {
+  backlog_id: string;
+  target: BacklogPromotionTarget;
   expected_revision: number;
   context: CommandContext;
 }
@@ -119,12 +217,20 @@ export interface LegacyApplyCommand {
 export type MutationCommand =
   | { type: "create_project"; payload: CreateProjectCommand }
   | { type: "create_task"; payload: CreateTaskCommand }
+  | { type: "create_backlog"; payload: CreateBacklogCommand }
+  | { type: "create_quick_item"; payload: CreateQuickItemCommand }
+  | { type: "delete_quick_item"; payload: DeleteQuickItemCommand }
   | { type: "update_work_item"; payload: UpdateWorkItemCommand }
   | { type: "add_today"; payload: AddTodayCommand }
   | { type: "remove_today"; payload: RemoveTodayCommand }
   | { type: "reorder_today"; payload: ReorderTodayCommand }
   | { type: "append_progress"; payload: AppendProgressCommand }
+  | { type: "update_backlog"; payload: UpdateBacklogCommand }
+  | { type: "discard_backlog"; payload: DiscardBacklogCommand }
+  | { type: "move_backlog"; payload: MoveBacklogCommand }
+  | { type: "reorder_node"; payload: ReorderNodeCommand }
   | { type: "archive_subtree"; payload: ArchiveSubtreeCommand }
+  | { type: "reopen_archived_subtree"; payload: ReopenArchivedSubtreeCommand }
   | {
       type: "permanently_delete_archived_subtree";
       payload: PermanentlyDeleteArchivedSubtreeCommand;
@@ -135,7 +241,12 @@ export type LegacyApplyWireCommand = {
   payload: LegacyApplyCommand;
 };
 
-export type Command = MutationCommand | LegacyApplyWireCommand;
+export type PromoteBacklogWireCommand = {
+  type: "promote_backlog";
+  payload: PromoteBacklogCommand;
+};
+
+export type Command = MutationCommand | PromoteBacklogWireCommand | LegacyApplyWireCommand;
 
 export type Query =
   | { type: "get_project"; id: string }
@@ -144,6 +255,7 @@ export type Query =
   | { type: "list_tasks" }
   | { type: "list_project_task_tree" }
   | { type: "list_archived_project_task_tree" }
+  | { type: "list_backlog"; filter: BacklogFilter }
   | { type: "list_today" }
   | { type: "recent_progress"; node_id: string; limit: number }
   | { type: "progress_timeline"; node_id: string }
@@ -157,6 +269,14 @@ export interface LegacyDryRunScope {
   task_manifests: string[];
   agent_logs: string[];
   project_contexts: string[];
+}
+
+export interface BacklogFilter {
+  parent_id?: string;
+  kind?: BacklogKind;
+  status?: BacklogStatus;
+  priority?: Priority;
+  tag?: string;
 }
 
 export interface LegacySourceFileSnapshot {
@@ -302,6 +422,12 @@ export type LegacyApplyCommandResult = {
   payload: LegacyApplyResult;
 };
 export type CommandResult = MutationCommandResult | LegacyApplyCommandResult;
+export interface PromotionResult {
+  target_node_id: string;
+  source_revision: number;
+  replayed: boolean;
+}
+export type PromotionCommandResult = { type: "promotion"; payload: PromotionResult };
 
 export interface Project {
   id: string;
@@ -349,6 +475,7 @@ export interface TodayItem {
   has_steps: boolean;
   has_available_workspace: boolean;
   direct_child_tasks: Task[];
+  is_quick_item: boolean;
 }
 
 export interface ProjectTaskItem {
@@ -366,6 +493,23 @@ export interface ProjectTaskItem {
   position: number;
   revision: number;
   has_steps: boolean;
+}
+
+export interface BacklogItem {
+  id: string;
+  parent_id: string;
+  parent_breadcrumb: string[];
+  key: string;
+  title: string;
+  priority: Priority;
+  position: number;
+  revision: number;
+  backlog_kind: BacklogKind;
+  backlog_status: BacklogStatus;
+  notes: string | null;
+  tags: string[];
+  source: string | null;
+  promoted_node_id: string | null;
 }
 
 export interface ProgressEvent {
@@ -404,6 +548,7 @@ export type QueryResult =
   | { type: "task"; payload: Task }
   | { type: "tasks"; payload: Task[] }
   | { type: "project_task_tree"; payload: ProjectTaskItem[] }
+  | { type: "backlog"; payload: BacklogItem[] }
   | { type: "today"; payload: TodayItem[] }
   | { type: "progress_events"; payload: ProgressEvent[] }
   | { type: "context_path"; payload: string | null }
@@ -422,6 +567,7 @@ export type NativeInvoke = <T>(
 
 export interface KarazhanClient {
   execute(command: MutationCommand): Promise<MutationCommandResult>;
+  execute(command: PromoteBacklogWireCommand): Promise<PromotionCommandResult>;
   execute(command: LegacyApplyWireCommand): Promise<LegacyApplyCommandResult>;
   query(query: Query): Promise<QueryResult>;
   openInZed(nodeId: string): Promise<void>;
@@ -431,7 +577,7 @@ export function createKarazhanClient(
   nativeInvoke: NativeInvoke = invoke,
 ): KarazhanClient {
   const execute = (command: Command) =>
-    nativeInvoke<CommandResult>("execute_command", { command });
+    nativeInvoke<CommandResult | PromotionCommandResult>("execute_command", { command });
   return {
     execute: execute as KarazhanClient["execute"],
     query(query) {

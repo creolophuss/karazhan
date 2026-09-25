@@ -46,6 +46,43 @@ export async function addTodayMembership(
   return result.payload.revision;
 }
 
+export async function createQuickItem(
+  client: TodayWriter,
+  description: string,
+  createId: OperationIdFactory = newOperationId,
+): Promise<number> {
+  const nodeId = createId();
+  const eventId = createId();
+  const result = await client.execute({
+    type: "create_quick_item",
+    payload: {
+      id: nodeId,
+      description: description.trim(),
+      event_id: eventId,
+      context: uiContext(`create-quick-item:${nodeId}`),
+    },
+  });
+  return result.payload.revision;
+}
+
+export async function deleteQuickItem(
+  client: TodayWriter,
+  nodeId: string,
+  expectedRevision: number,
+  createId: OperationIdFactory = newOperationId,
+): Promise<number> {
+  const operationId = createId();
+  const result = await client.execute({
+    type: "delete_quick_item",
+    payload: {
+      node_id: nodeId,
+      expected_revision: expectedRevision,
+      context: uiContext(operationId),
+    },
+  });
+  return result.payload.revision;
+}
+
 export async function removeTodayMembership(
   client: TodayWriter,
   nodeId: string,
@@ -206,9 +243,12 @@ export function todayPath(item: Pick<TodayItem, "path_titles">): string {
 }
 
 export function isTodayItemExpandable(
-  item: Pick<TodayItem, "kind" | "direct_child_tasks" | "has_steps">,
+  item: Pick<TodayItem, "kind" | "direct_child_tasks" | "has_steps" | "is_quick_item">,
 ): boolean {
-  return item.kind === "project" || item.direct_child_tasks.length > 0 || item.has_steps;
+  return (
+    !item.is_quick_item &&
+    (item.kind === "project" || item.direct_child_tasks.length > 0 || item.has_steps)
+  );
 }
 
 export function checkboxStatus(checked: boolean): WorkStatus {
