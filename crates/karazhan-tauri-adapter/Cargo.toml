@@ -1,0 +1,15 @@
+[package]
+name = "karazhan-tauri-adapter"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+karazhan-core = { path = "../karazhan-core" }
+serde.workspace = true
+tauri.workspace = true
+
+[dev-dependencies]
+serde_json = "1.0.151"
+tempfile = "3.27.0"

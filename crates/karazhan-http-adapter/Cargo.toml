@@ -1,0 +1,19 @@
+[package]
+name = "karazhan-http-adapter"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum.workspace = true
+getrandom.workspace = true
+karazhan-core = { path = "../karazhan-core" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+karazhan-tauri-adapter = { path = "../karazhan-tauri-adapter" }
+serde_json.workspace = true
+tower.workspace = true

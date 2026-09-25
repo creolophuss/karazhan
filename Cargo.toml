@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "apps/desktop/src-tauri",
+    "crates/karazhan-core",
+    "crates/karazhan-http-adapter",
+    "crates/karazhan-mcp",
+    "crates/karazhan-tauri-adapter",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+rust-version = "1.98"
+
+[workspace.dependencies]
+axum = "0.8.9"
+getrandom = "0.3.4"
+rmcp = { version = "3.4.0", default-features = false, features = ["macros", "server", "transport-io"] }
+rusqlite = { version = "0.40.2", features = ["backup", "bundled"] }
+schemars = "1.2.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_yaml_ng = "0.10.0"
+sha2 = "0.10.9"
+tauri = { version = "2.11.5", features = [] }
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread"] }
+tower = { version = "0.5.3", features = ["util"] }
+uuid = { version = "1.26.1", features = ["v5"] }

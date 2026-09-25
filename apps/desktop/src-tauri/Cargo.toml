@@ -1,0 +1,22 @@
+[package]
+name = "karazhan-desktop"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "karazhan_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+karazhan-core = { path = "../../../crates/karazhan-core" }
+karazhan-http-adapter = { path = "../../../crates/karazhan-http-adapter" }
+karazhan-tauri-adapter = { path = "../../../crates/karazhan-tauri-adapter" }
+tauri.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

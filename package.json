@@ -1,0 +1,14 @@
+{
+  "name": "karazhan-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "scripts": {
+    "check": "./scripts/check.sh",
+    "desktop:dev": "npm --workspace @karazhan/desktop run tauri dev",
+    "desktop:build": "npm --workspace @karazhan/desktop run tauri build",
+    "frontend:check": "npm --workspace @karazhan/desktop run check"
+  }
+}
