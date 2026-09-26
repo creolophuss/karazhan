@@ -8,9 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ActorType, BacklogFilter, BacklogItem, BacklogKind, BacklogPatch, Channel, CommandMetadata,
     Database, DomainError, LegacyApplyResult, LegacyDryRunReport, LegacyDryRunScope,
-    MutationResult, NewBacklog, NewProgressEvent, NewProject, NewTask, Priority, ProgressEvent,
-    ProgressEventKind, Project, ProjectTaskItem, PromotionResult, PromotionTarget, Task,
-    TextChange, TodayItem, WorkItemPatch, WorkStatus, dry_run_legacy_source,
+    MutationResult, NewBacklog, NewProgressEvent, NewProject, NewResourceBinding, NewTask,
+    Priority, ProgressEvent, ProgressEventKind, Project, ProjectTaskItem, PromotionResult,
+    PromotionTarget, ResourceAvailability, ResourceKind, Task, TextChange, TodayItem,
+    WorkItemPatch, WorkStatus, dry_run_legacy_source,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +85,26 @@ pub struct CreateQuickItemCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeleteQuickItemCommand {
     pub node_id: String,
+    pub expected_revision: i64,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddResourceBindingCommand {
+    pub id: String,
+    pub node_id: String,
+    pub kind: ResourceKind,
+    pub locator: String,
+    pub is_primary: bool,
+    pub availability: ResourceAvailability,
+    pub source: String,
+    pub context: CommandContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateResourceAvailabilityCommand {
+    pub binding_id: String,
+    pub availability: ResourceAvailability,
     pub expected_revision: i64,
     pub context: CommandContext,
 }
@@ -261,6 +282,8 @@ pub enum Command {
     CreateBacklog(CreateBacklogCommand),
     CreateQuickItem(CreateQuickItemCommand),
     DeleteQuickItem(DeleteQuickItemCommand),
+    AddResourceBinding(AddResourceBindingCommand),
+    UpdateResourceAvailability(UpdateResourceAvailabilityCommand),
     UpdateWorkItem(UpdateWorkItemCommand),
     AddToday(AddTodayCommand),
     RemoveToday(RemoveTodayCommand),
@@ -410,6 +433,26 @@ impl Application {
                 command.expected_revision,
                 command.context.metadata(),
             )?,
+            Command::AddResourceBinding(command) => self.database.add_resource_binding(
+                NewResourceBinding {
+                    id: &command.id,
+                    node_id: &command.node_id,
+                    kind: command.kind,
+                    locator: &command.locator,
+                    is_primary: command.is_primary,
+                    availability: command.availability,
+                    source: &command.source,
+                },
+                command.context.metadata(),
+            )?,
+            Command::UpdateResourceAvailability(command) => {
+                self.database.update_resource_availability(
+                    &command.binding_id,
+                    command.availability,
+                    command.expected_revision,
+                    command.context.metadata(),
+                )?
+            }
             Command::UpdateWorkItem(command) => {
                 let patch = WorkItemPatch {
                     title: command.title.as_deref(),

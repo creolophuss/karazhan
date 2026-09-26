@@ -24,6 +24,20 @@ export type BacklogStatus =
   | "ready"
   | "promoted"
   | "discarded";
+export type ResourceKind =
+  | "workspace"
+  | "manifest"
+  | "agent_log"
+  | "repository"
+  | "external_session"
+  | "url"
+  | "file"
+  | "directory";
+export type ResourceAvailability =
+  | "available"
+  | "missing"
+  | "unreadable"
+  | "unknown";
 
 export interface CommandContext {
   idempotency_key: string;
@@ -79,6 +93,24 @@ export interface CreateQuickItemCommand {
 
 export interface DeleteQuickItemCommand {
   node_id: string;
+  expected_revision: number;
+  context: CommandContext;
+}
+
+export interface AddResourceBindingCommand {
+  id: string;
+  node_id: string;
+  kind: ResourceKind;
+  locator: string;
+  is_primary: boolean;
+  availability: ResourceAvailability;
+  source: string;
+  context: CommandContext;
+}
+
+export interface UpdateResourceAvailabilityCommand {
+  binding_id: string;
+  availability: ResourceAvailability;
   expected_revision: number;
   context: CommandContext;
 }
@@ -219,6 +251,11 @@ export type MutationCommand =
   | { type: "create_backlog"; payload: CreateBacklogCommand }
   | { type: "create_quick_item"; payload: CreateQuickItemCommand }
   | { type: "delete_quick_item"; payload: DeleteQuickItemCommand }
+  | { type: "add_resource_binding"; payload: AddResourceBindingCommand }
+  | {
+      type: "update_resource_availability";
+      payload: UpdateResourceAvailabilityCommand;
+    }
   | { type: "update_work_item"; payload: UpdateWorkItemCommand }
   | { type: "add_today"; payload: AddTodayCommand }
   | { type: "remove_today"; payload: RemoveTodayCommand }
@@ -528,10 +565,10 @@ export interface ProgressEvent {
 export interface ResourceBinding {
   id: string;
   node_id: string;
-  kind: string;
+  kind: ResourceKind;
   locator: string;
   is_primary: boolean;
-  availability: string;
+  availability: ResourceAvailability;
   source: string;
   created_at: string;
   updated_at: string;

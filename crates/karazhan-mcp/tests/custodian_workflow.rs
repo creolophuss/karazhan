@@ -4,10 +4,11 @@ use std::{
 };
 
 use karazhan_core::{
-    ActorType, Channel, ProgressEventKind, SYSTEM_ROOT_ID,
+    ActorType, Channel, ProgressEventKind, ResourceAvailability, ResourceKind, SYSTEM_ROOT_ID,
     application::{
-        AddTodayCommand, AppendProgressCommand, Command, CommandContext, CreateProjectCommand,
-        CreateTaskCommand, Query, RemoveTodayCommand, ReorderTodayCommand,
+        AddResourceBindingCommand, AddTodayCommand, AppendProgressCommand, Command, CommandContext,
+        CreateProjectCommand, CreateTaskCommand, Query, RemoveTodayCommand, ReorderTodayCommand,
+        UpdateResourceAvailabilityCommand,
     },
 };
 use serde_json::{Value, json};
@@ -163,6 +164,25 @@ fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
         position: 0,
         context: context("workflow:create-child-task"),
     }));
+    let binding_id = "50000000-0000-0000-0000-000000000010";
+    client.command(Command::AddResourceBinding(AddResourceBindingCommand {
+        id: binding_id.into(),
+        node_id: CHILD_TASK_ID.into(),
+        kind: ResourceKind::Workspace,
+        locator: "/isolated/workflow/child-task".into(),
+        is_primary: true,
+        availability: ResourceAvailability::Available,
+        source: "custodian_manifest".into(),
+        context: context("workflow:add-workspace-binding"),
+    }));
+    client.command(Command::UpdateResourceAvailability(
+        UpdateResourceAvailabilityCommand {
+            binding_id: binding_id.into(),
+            availability: ResourceAvailability::Missing,
+            expected_revision: 1,
+            context: context("workflow:update-workspace-availability"),
+        },
+    ));
     client.command(Command::AppendProgress(AppendProgressCommand {
         node_id: CHILD_TASK_ID.into(),
         event_id: "44000000-0000-0000-0000-000000000010".into(),
@@ -213,6 +233,16 @@ fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
     });
     assert_eq!(child["payload"]["parent_id"], PARENT_TASK_ID);
     assert_eq!(child["payload"]["title"], "Child Task");
+
+    let bindings = client.query(Query::ListResourceBindings {
+        node_id: CHILD_TASK_ID.into(),
+    });
+    assert_eq!(bindings["type"], "resource_bindings");
+    assert_eq!(bindings["payload"].as_array().expect("bindings").len(), 1);
+    assert_eq!(bindings["payload"][0]["id"], binding_id);
+    assert_eq!(bindings["payload"][0]["kind"], "workspace");
+    assert_eq!(bindings["payload"][0]["availability"], "missing");
+    assert_eq!(bindings["payload"][0]["revision"], 2);
 
     let today = client.query(Query::ListToday);
     let today_items = today["payload"].as_array().expect("Today items");

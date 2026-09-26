@@ -1,6 +1,6 @@
 ---
 name: karazhan-mcp-collaboration
-description: Guide a Custodian in registering and updating its own Karazhan work through MCP after durable local files exist. Use for top-level Project registration, Child Project/Task creation, progress, fields, Today, ResourceBinding queries, revisions, idempotency, and conflict handling. Never use this skill for Medivh.
+description: Guide a Custodian in registering and updating its own Karazhan work through MCP after durable local files exist. Use for top-level Project registration, Child Project/Task creation, progress, fields, Today, ResourceBinding registration and availability, revisions, idempotency, and conflict handling. Never use this skill for Medivh.
 ---
 
 # Karazhan MCP Collaboration
@@ -25,12 +25,12 @@ Read [references/mcp-workflows.md](references/mcp-workflows.md) before writing. 
 - append its own durable progress and evidence;
 - explicitly update supported current fields;
 - create a Child Project or Child Task with a pre-generated stable local ID;
-- query existing Context and ResourceBindings;
+- register and query ResourceBindings for its own Project/Task, and update binding availability;
 - maintain its own `context/index.md` and `context/coordination/` from verified local and Karazhan facts.
 
 Do not create or manage Custodian sessions. Creating a Karazhan node does not create a Custodian.
 
-The current shared MCP contract can query ResourceBindings but cannot create or update them. Do not claim that a Workspace binding was registered through MCP. Project creation may set `context_path` to the Project's local `context/` directory; Workspace ResourceBinding writes remain a product gap.
+ResourceBinding writes register locators only; they do not read, scan, upload, or copy the referenced resource. Binding identity (`id`, node, kind, locator) is immutable after creation. Use an availability update to record `available`, `missing`, `unreadable`, or `unknown`, and query the binding after each write.
 
 ## Safety
 

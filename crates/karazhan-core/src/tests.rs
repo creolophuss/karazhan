@@ -3641,6 +3641,101 @@ fn shared_application_contract_drives_the_core_without_adapter_rules() {
 }
 
 #[test]
+fn resource_binding_application_contract_creates_lists_and_updates_availability() {
+    use crate::application::{
+        AddResourceBindingCommand, Application, Command, CommandResult, CreateTaskCommand, Query,
+        QueryResult, UpdateResourceAvailabilityCommand,
+    };
+
+    let binding_id = "50000000-0000-0000-0000-000000000001";
+    let mut application = Application::new(Database::open_in_memory().unwrap());
+    application
+        .execute(Command::CreateTask(CreateTaskCommand {
+            id: TASK_ID.into(),
+            parent_id: SYSTEM_ROOT_ID.into(),
+            key: "binding-task".into(),
+            title: "Binding task".into(),
+            summary: None,
+            position: 0,
+            context: contract_context("contract-create-binding-task"),
+        }))
+        .unwrap();
+
+    let add = Command::AddResourceBinding(AddResourceBindingCommand {
+        id: binding_id.into(),
+        node_id: TASK_ID.into(),
+        kind: ResourceKind::Workspace,
+        locator: "/work/task".into(),
+        is_primary: true,
+        availability: ResourceAvailability::Available,
+        source: "custodian_manifest".into(),
+        context: contract_context("contract-add-binding"),
+    });
+    assert_eq!(
+        application.execute(add.clone()).unwrap(),
+        CommandResult::Mutation(MutationResult {
+            revision: 1,
+            replayed: false,
+        })
+    );
+    assert_eq!(
+        application.execute(add).unwrap(),
+        CommandResult::Mutation(MutationResult {
+            revision: 1,
+            replayed: true,
+        })
+    );
+
+    let update = Command::UpdateResourceAvailability(UpdateResourceAvailabilityCommand {
+        binding_id: binding_id.into(),
+        availability: ResourceAvailability::Missing,
+        expected_revision: 1,
+        context: contract_context("contract-update-binding"),
+    });
+    assert_eq!(
+        application.execute(update.clone()).unwrap(),
+        CommandResult::Mutation(MutationResult {
+            revision: 2,
+            replayed: false,
+        })
+    );
+    assert_eq!(
+        application.execute(update).unwrap(),
+        CommandResult::Mutation(MutationResult {
+            revision: 2,
+            replayed: true,
+        })
+    );
+
+    let QueryResult::ResourceBindings(bindings) = application
+        .query(Query::ListResourceBindings {
+            node_id: TASK_ID.into(),
+        })
+        .unwrap()
+    else {
+        panic!("unexpected query result");
+    };
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].id, binding_id);
+    assert_eq!(bindings[0].kind, "workspace");
+    assert_eq!(bindings[0].locator, "/work/task");
+    assert_eq!(bindings[0].availability, "missing");
+    assert_eq!(bindings[0].revision, 2);
+
+    let conflict = application
+        .execute(Command::UpdateResourceAvailability(
+            UpdateResourceAvailabilityCommand {
+                binding_id: binding_id.into(),
+                availability: ResourceAvailability::Unreadable,
+                expected_revision: 1,
+                context: contract_context("contract-stale-binding-update"),
+            },
+        ))
+        .unwrap_err();
+    assert_eq!(conflict.code(), "revision_conflict");
+}
+
+#[test]
 fn backlog_application_contract_exposes_query_edit_discard_reorder_and_promotion() {
     use crate::application::{
         Application, BacklogPromotionTarget, Command, CommandResult, DiscardBacklogCommand,

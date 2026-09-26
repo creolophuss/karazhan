@@ -148,6 +148,50 @@ After durable progress is appended locally, query the current node revision and 
 
 Query the affected node or timeline after every command. Reuse the same event ID and idempotency key only for an identical retry.
 
-## Current limitation
+A Custodian registers its already-persisted Workspace locator without asking Karazhan to read the directory:
 
-`list_resource_bindings` is available as a query, but the shared command contract does not currently expose ResourceBinding creation or availability updates. Do not invent such a command or report a binding as synchronized. This does not block local Workspace use or Project creation.
+```json
+{
+  "request": {
+    "type": "add_resource_binding",
+    "payload": {
+      "id": "<stable-binding-uuid>",
+      "node_id": "<work.id>",
+      "kind": "workspace",
+      "locator": "<absolute-workspace-path>",
+      "is_primary": true,
+      "availability": "available",
+      "source": "custodian_manifest",
+      "context": {
+        "idempotency_key": "binding:<stable-binding-uuid>:create",
+        "actor_type": "task_agent",
+        "actor_ref": "custodian:<work.id>",
+        "channel": "mcp"
+      }
+    }
+  }
+}
+```
+
+Query `list_resource_bindings` for the node and use the returned binding revision when its availability changes:
+
+```json
+{
+  "request": {
+    "type": "update_resource_availability",
+    "payload": {
+      "binding_id": "<stable-binding-uuid>",
+      "availability": "missing",
+      "expected_revision": 1,
+      "context": {
+        "idempotency_key": "binding:<stable-binding-uuid>:availability:missing:r1",
+        "actor_type": "task_agent",
+        "actor_ref": "custodian:<work.id>",
+        "channel": "mcp"
+      }
+    }
+  }
+}
+```
+
+Allowed availability values are `available`, `missing`, `unreadable`, and `unknown`. Do not use availability to delete a Project/Task or rewrite binding identity. Register only locators within the Custodian's authorization boundary; never place credentials or sensitive file contents in a locator or source field.
