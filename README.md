@@ -12,6 +12,8 @@ The current foundation contains a shared Rust core, the complete SQLite storage 
 
 ## Develop and operate
 
+[`docs/product-requirements.md`](docs/product-requirements.md) is the repository-owned, authoritative product requirement. Revise and review that document before implementing a new or changed product requirement; historical delivery documents and requirement deltas do not override it.
+
 The complete instructions for desktop startup, verification, database locations, safe backup/restore boundaries, MCP host configuration, and HTTP bearer-token semantics are in [`docs/development-and-operations.md`](docs/development-and-operations.md).
 
 The acceptance matrix in [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md) records the delivery-time evidence. Search, Settings/Import, and real Stage 2.5 cutover were subsequently deferred by the user and are not current MVP work.
