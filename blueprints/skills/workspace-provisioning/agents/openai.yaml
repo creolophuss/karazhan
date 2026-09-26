@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workspace Provisioning"
+  short_description: "Create safe Project and Task Workspace files"
+

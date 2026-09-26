@@ -31,8 +31,8 @@ fn create_project(title: &str) -> Command {
         context_path: None,
         context: CommandContext {
             idempotency_key: "transport:create-project".into(),
-            actor_type: ActorType::WorkAssistant,
-            actor_ref: Some("assistant:equivalence-test".into()),
+            actor_type: ActorType::Custodian,
+            actor_ref: Some("custodian:equivalence-test".into()),
             channel: Channel::Api,
         },
     })

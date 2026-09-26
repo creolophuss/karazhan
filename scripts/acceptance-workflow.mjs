@@ -57,8 +57,8 @@ async function tool(name, request) {
 function context(key) {
   return {
     idempotency_key: `acceptance:${key}`,
-    actor_type: "work_assistant",
-    actor_ref: "work-assistant:desktop-acceptance",
+    actor_type: "task_agent",
+    actor_ref: "custodian:desktop-acceptance",
     channel: "mcp",
   };
 }
@@ -121,7 +121,7 @@ async function seed() {
     node_id: ids.taskA,
     event_id: ids.progress,
     event_kind: "progress",
-    summary: "Created through Work Assistant MCP",
+    summary: "Created through Custodian MCP",
     expected_revision: 1,
     context: context("append-progress"),
   });
@@ -159,7 +159,7 @@ async function verify() {
   );
   assert.equal(timeline.type, "progress_events");
   assert.ok(
-    timeline.payload.some((event) => event.summary === "Created through Work Assistant MCP"),
+    timeline.payload.some((event) => event.summary === "Created through Custodian MCP"),
   );
 
   console.log(

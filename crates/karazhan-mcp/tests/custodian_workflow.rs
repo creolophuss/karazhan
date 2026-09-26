@@ -47,7 +47,7 @@ impl McpClient {
             "params": {
                 "protocolVersion": "2025-11-25",
                 "capabilities": {},
-                "clientInfo": { "name": "work-assistant-test", "version": "0.1.0" }
+                "clientInfo": { "name": "custodian-test", "version": "0.1.0" }
             }
         }));
         assert_eq!(initialized["id"], 1);
@@ -123,14 +123,14 @@ impl McpClient {
 fn context(idempotency_key: &str) -> CommandContext {
     CommandContext {
         idempotency_key: idempotency_key.into(),
-        actor_type: ActorType::WorkAssistant,
-        actor_ref: Some("work-assistant:workflow-test".into()),
+        actor_type: ActorType::Custodian,
+        actor_ref: Some("custodian:workflow-test".into()),
         channel: Channel::Mcp,
     }
 }
 
 #[test]
-fn work_assistant_can_drive_the_required_workflow_through_formal_mcp() {
+fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
     let directory = tempfile::tempdir().expect("temporary product data");
     let mut client = McpClient::start(&directory.path().join("karazhan.sqlite3"));
 

@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type ActorType =
   | "user"
-  | "work_assistant"
   | "task_agent"
   | "system"
   | "unknown";

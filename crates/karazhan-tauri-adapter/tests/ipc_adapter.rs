@@ -11,8 +11,8 @@ use karazhan_tauri_adapter::{AdapterError, TauriAdapter};
 fn context(idempotency_key: &str) -> CommandContext {
     CommandContext {
         idempotency_key: idempotency_key.into(),
-        actor_type: ActorType::WorkAssistant,
-        actor_ref: Some("assistant:test".into()),
+        actor_type: ActorType::User,
+        actor_ref: Some("user:test".into()),
         channel: Channel::Ui,
     }
 }

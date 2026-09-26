@@ -240,8 +240,8 @@ pub struct WorkItemPatch<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum ActorType {
     User,
-    WorkAssistant,
-    TaskAgent,
+    #[serde(rename = "task_agent")]
+    Custodian,
     System,
     Unknown,
 }
@@ -250,8 +250,7 @@ impl ActorType {
     fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
-            Self::WorkAssistant => "work_assistant",
-            Self::TaskAgent => "task_agent",
+            Self::Custodian => "task_agent",
             Self::System => "system",
             Self::Unknown => "unknown",
         }

@@ -1,0 +1,15 @@
+schema_version: 1
+work:
+  id: ""
+  kind: ""
+  project_id: null
+  parent_id: null
+  title: ""
+  # Initialization summaries only; authority: context/requirements.md @ r1.
+  # Set the actual source version when provisioning. Do not maintain current requirements here.
+  goal: ""
+  acceptance_criteria: []
+  created_at: ""
+workspace:
+  path: ""
+repositories: []

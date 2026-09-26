@@ -2,7 +2,7 @@
 
 Karazhan is the production codebase for the local-first Agent Workbench desktop application.
 
-The current foundation contains a shared Rust core, the complete SQLite storage structure, a serializable application contract, thin Tauri IPC, authenticated loopback HTTP, and stdio MCP adapters, plus the formal React/TypeScript and Tauri 2 desktop shell.
+The current foundation contains a shared Rust core, the complete SQLite storage structure, a serializable application contract, thin Tauri IPC, authenticated loopback HTTP, and stdio MCP adapters, plus the formal React/TypeScript and Tauri 2 desktop shell. The repository also contains the canonical Medivh filesystem blueprint and shared Custodian skills, so the local Workspace and visual product can evolve as one solution without coupling their runtimes.
 
 ## Prerequisites
 
@@ -14,9 +14,20 @@ The current foundation contains a shared Rust core, the complete SQLite storage 
 
 The complete instructions for desktop startup, verification, database locations, safe backup/restore boundaries, MCP host configuration, and HTTP bearer-token semantics are in [`docs/development-and-operations.md`](docs/development-and-operations.md).
 
-Child acceptance criteria and all 32 Stage 3 MVP scenarios are mapped to tests, retained evidence, or explicit gaps in [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md).
+The acceptance matrix in [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md) records the delivery-time evidence. Search, Settings/Import, and real Stage 2.5 cutover were subsequently deferred by the user and are not current MVP work.
 
-The complete Backlog workflow is delivered in this Child. Search, Settings/Import, real Stage 2.5 cutover, and release/distribution remain assigned to proposed future Children in [`docs/deferred-work-handoff.md`](docs/deferred-work-handoff.md).
+The complete Backlog workflow is delivered. Release/distribution remains optional future work; the older proposed-Child list in [`docs/deferred-work-handoff.md`](docs/deferred-work-handoff.md) is retained as delivery-time history rather than current scheduling authority.
+
+## Medivh
+
+[`blueprints/medivh/`](blueprints/medivh/) is the current Hermes blueprint for the filesystem-only Medivh role. Medivh:
+
+- creates safe top-level Project Workspace files;
+- does not connect to Karazhan;
+- does not create or start Agents;
+- hands control back after filesystem verification.
+
+Custodians use the separate [`karazhan-mcp-collaboration`](blueprints/skills/karazhan-mcp-collaboration/SKILL.md) skill to register and synchronize their own work. Both Medivh and authorized Parent Custodians can use [`workspace-provisioning`](blueprints/skills/workspace-provisioning/SKILL.md) for filesystem structure. Read the [role boundary](blueprints/medivh/README.md) before updating a live profile.
 
 The complete review package and reviewer checklist are in [`docs/delivery-summary.md`](docs/delivery-summary.md).
 
@@ -78,7 +89,7 @@ Start the desktop development application from the repository root with `npm run
 - one shared `Application` handle for desktop and HTTP adapters, with an exact-address bind failure that leaves desktop queries available and never falls back to another port.
 - an on-demand `karazhan-mcp` binary using the official Rust MCP SDK, with generic shared-contract command/query tools and protocol-only stdout.
 - cross-transport contract evidence that Tauri, HTTP, and MCP return identical domain results, error codes, and error messages for the same command.
-- a real MCP Work Assistant workflow covering Project, parent Task, Child Task, progress, Today add/reorder/remove, and typed summary queries.
+- a real MCP Custodian workflow covering Project, parent Task, Child Task, progress, Today add/reorder/remove, and typed summary queries.
 - a node-ID-only Open in Zed Tauri command that resolves primary Workspace bindings, canonicalizes trusted roots and targets, and invokes fixed-path macOS Launch Services without a shell.
 - a complete Open in Zed security matrix for missing paths, non-directories, direct and symlink escapes, forged node IDs, Launch Services failures, and zero business-state mutation.
 - a formal React/TypeScript + Tauri 2 desktop shell whose startup opens the shared SQLite application and wires the same core into Tauri IPC and the loopback HTTP adapter.
@@ -94,7 +105,7 @@ Start the desktop development application from the repository root with `npm run
 - shared-core queries for recent/full progress, nearest Project Context, ResourceBinding availability, and revision-safe field updates remain available to adapters even though the simplified Projects page no longer renders those panels.
 - an Open in Zed action in Today for nodes with an available primary Workspace binding; the UI submits only the node ID and presents structured native-boundary failures.
 - a fixed sidebar and independently scrolling right workspace, verified in the [user-review UI evidence](evidence/ui-review-20260924/REPORT.md).
-- a recorded real-desktop vertical acceptance run covering Work Assistant MCP creation, Projects ingestion, Today membership, field edits, WKWebView-safe pointer reordering, normal exit, restart persistence, and independent MCP/SQLite verification.
+- a recorded real-desktop vertical acceptance run covering Custodian MCP creation, Projects ingestion, Today membership, field edits, WKWebView-safe pointer reordering, normal exit, restart persistence, and independent MCP/SQLite verification.
 - a read-only legacy dry-run boundary exposed through the shared query contract, requiring an explicit source root and typed relative scope, rejecting absolute/parent/symlink escapes, and producing deterministic source/report digests without writing SQLite.
 - a protected-content gate that accepts only the fixed registry names, `.workbench/task.yaml`, `agent_log.md`, and Context directory locators; Context and coordination files—including in-root symlink targets—are rejected before reads and their contents never enter reports or errors.
 - deterministic legacy identity planning from YAML: Project slug UUIDv5 under the frozen namespace, unchanged legacy Task UUIDs and parent chains, Root Tasks attached below their Project, and one ordinary `planned` / `none` Child Task for each non-empty `next_action`.

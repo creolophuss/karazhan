@@ -58,8 +58,8 @@ async function tool(name, request) {
 function context(key) {
   return {
     idempotency_key: `large-list:${key}`,
-    actor_type: "work_assistant",
-    actor_ref: "work-assistant:large-list-acceptance",
+    actor_type: "task_agent",
+    actor_ref: "custodian:large-list-acceptance",
     channel: "mcp",
   };
 }

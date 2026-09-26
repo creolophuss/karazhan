@@ -32,10 +32,22 @@ fn node<'a>(
 fn metadata(key: &str) -> CommandMetadata<'_> {
     CommandMetadata {
         idempotency_key: key,
-        actor_type: ActorType::WorkAssistant,
-        actor_ref: Some("work-assistant"),
+        actor_type: ActorType::Custodian,
+        actor_ref: Some("custodian"),
         channel: Channel::Mcp,
     }
+}
+
+#[test]
+fn custodian_preserves_the_existing_task_agent_wire_value() {
+    assert_eq!(
+        serde_json::to_value(ActorType::Custodian).unwrap(),
+        serde_json::json!("task_agent")
+    );
+    assert_eq!(
+        serde_json::from_value::<ActorType>(serde_json::json!("task_agent")).unwrap(),
+        ActorType::Custodian
+    );
 }
 
 fn create(db: &mut Database, value: NewNode<'_>) -> Result<MutationResult, DomainError> {
@@ -1504,9 +1516,9 @@ fn create_and_status_commands_are_idempotent_and_preserve_metadata() {
     assert_eq!(
         recorded,
         (
-            "work-assistant".into(),
+            "custodian".into(),
             "mcp".into(),
-            "work_assistant".into(),
+            "task_agent".into(),
             "mcp".into()
         )
     );
@@ -1733,7 +1745,7 @@ fn resource_bindings_support_shared_locators_and_availability_updates() {
     let bindings = db.list_resource_bindings(PROJECT_ID).unwrap();
     assert_eq!(bindings[0].availability, "missing");
     assert_eq!(bindings[0].revision, 2);
-    assert_eq!(bindings[0].updated_actor, "work-assistant");
+    assert_eq!(bindings[0].updated_actor, "custodian");
     assert_eq!(bindings[0].write_source, "mcp");
     assert!(!bindings[0].created_at.is_empty());
     assert!(!bindings[0].updated_at.is_empty());
@@ -3733,8 +3745,8 @@ fn backlog_application_contract_exposes_query_edit_discard_reorder_and_promotion
 fn contract_context(idempotency_key: &str) -> crate::application::CommandContext {
     crate::application::CommandContext {
         idempotency_key: idempotency_key.into(),
-        actor_type: ActorType::WorkAssistant,
-        actor_ref: Some("work-assistant".into()),
+        actor_type: ActorType::Custodian,
+        actor_ref: Some("custodian".into()),
         channel: Channel::Mcp,
     }
 }
