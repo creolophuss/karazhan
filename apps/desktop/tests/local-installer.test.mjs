@@ -34,6 +34,9 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   const installerSource = await readFile(installer, "utf8");
   assert.doesNotMatch(installerSource, /awb-tauri-spike-tools/);
   assert.match(installerSource, /https:\/\/sh\.rustup\.rs/);
+  assert.match(installerSource, /git -C "\$SCRIPT_DIR" rev-list --count HEAD/);
+  assert.match(installerSource, /KARAZHAN_INSTALL_ALLOW_DIRTY/);
+  assert.match(installerSource, /tauri-install-version\.json/);
   assert.match(
     installerSource,
     /DYLD_LIBRARY_PATH="\$rust_dyld_library_path"[\s\\]+"\$RUST_BIN\/cargo" build/,
@@ -55,6 +58,18 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
     process.arch === "arm64"
       ? "aarch64-apple-darwin"
       : "x86_64-apple-darwin";
+  const baseVersion = JSON.parse(
+    await readFile(
+      path.join(repositoryRoot, "apps/desktop/src-tauri/tauri.conf.json"),
+      "utf8",
+    ),
+  ).version;
+  const commitCount = spawnSync("git", ["rev-list", "--count", "HEAD"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  }).stdout.trim();
+  const [major, minor] = baseVersion.split(".");
+  const derivedVersion = `${major}.${minor}.${commitCount}`;
 
   await mkdir(path.join(appSource, "Contents", "MacOS"), { recursive: true });
   await writeFile(path.join(appSource, "Contents", "MacOS", "Karazhan"), "app\n");
@@ -136,6 +151,7 @@ fi
     CARGO_HOME: cargoHome,
     RUSTUP_HOME: rustupHome,
     KARAZHAN_TEST_CARGO_LOG: cargoLog,
+    KARAZHAN_INSTALL_ALLOW_DIRTY: "1",
     KARAZHAN_INSTALL_SKIP_BUILD: "0",
     KARAZHAN_INSTALL_APP_SOURCE: appSource,
     KARAZHAN_INSTALL_MCP_SOURCE: mcpSource,
@@ -212,7 +228,11 @@ fi
   );
   assert.equal(
     await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.version"), "utf8"),
-    "0.1.0\n",
+    `${derivedVersion}\n`,
+  );
+  assert.equal(
+    await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.commit"), "utf8"),
+    `${spawnSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).stdout.trim()}\n`,
   );
   await assert.rejects(
     stat(path.join(stateDirectory, "baseline/medivh/memories/USER.md")),

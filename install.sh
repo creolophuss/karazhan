@@ -14,7 +14,7 @@ MCP_SOURCE=${KARAZHAN_INSTALL_MCP_SOURCE:-"$SCRIPT_DIR/target/release/karazhan-m
 SKIP_BUILD=${KARAZHAN_INSTALL_SKIP_BUILD:-0}
 SKIP_APP=${KARAZHAN_INSTALL_SKIP_APP:-0}
 INSTALL_PROXY=${KARAZHAN_INSTALL_PROXY:-http://127.0.0.1:7897}
-INSTALL_VERSION=${KARAZHAN_INSTALL_VERSION:-$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SCRIPT_DIR/apps/desktop/src-tauri/tauri.conf.json" | sed -n '1p')}
+VERSION_CONFIG="$SCRIPT_DIR/apps/desktop/src-tauri/tauri.conf.json"
 
 die() {
   printf 'karazhan install: %s\n' "$*" >&2
@@ -39,6 +39,32 @@ require_command git
 require_command shasum
 require_command awk
 
+SOURCE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null) || \
+  die "repository HEAD is unavailable: $SCRIPT_DIR"
+if [ "${KARAZHAN_INSTALL_ALLOW_DIRTY:-0}" != 1 ]; then
+  git -C "$SCRIPT_DIR" diff --quiet || \
+    die "tracked files have uncommitted changes; commit them before installing"
+  git -C "$SCRIPT_DIR" diff --cached --quiet || \
+    die "tracked files have staged but uncommitted changes; commit them before installing"
+fi
+
+base_app_version=$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$VERSION_CONFIG" | sed -n '1p')
+base_major_minor=$(printf '%s\n' "$base_app_version" | awk -F. '
+  /^[0-9]+\.[0-9]+\.[0-9]+$/ { print $1 "." $2 }
+')
+[ -n "$base_major_minor" ] || die "cannot read base MAJOR.MINOR from $VERSION_CONFIG"
+
+if [ -n "${KARAZHAN_INSTALL_VERSION:-}" ]; then
+  INSTALL_VERSION=$KARAZHAN_INSTALL_VERSION
+else
+  shallow_repository=$(git -C "$SCRIPT_DIR" rev-parse --is-shallow-repository 2>/dev/null || printf true)
+  [ "$shallow_repository" = false ] || \
+    die "complete Git history is required to derive the install version; run: git fetch --unshallow"
+  commit_count=$(git -C "$SCRIPT_DIR" rev-list --count HEAD)
+  INSTALL_VERSION="$base_major_minor.$commit_count"
+fi
+
 version_compare() {
   awk -v left="$1" -v right="$2" 'BEGIN {
     if (left !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || right !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 2
@@ -62,7 +88,9 @@ trap cleanup_install_tmp EXIT
 trap 'exit 130' HUP INT TERM
 INSTALL_TIMESTAMP=$(date '+%Y%m%d%H%M%S')
 STATUS_FILE="$INSTALL_TMP/status"
+TAURI_VERSION_CONFIG="$INSTALL_TMP/tauri-install-version.json"
 : > "$STATUS_FILE"
+printf '{"version":"%s"}\n' "$INSTALL_VERSION" > "$TAURI_VERSION_CONFIG"
 
 paths_equal() {
   left=$1
@@ -159,10 +187,13 @@ write_managed_state() {
   baseline_path=$2
   digest_source="$INSTALL_TMP/managed-digest"
   version_source="$INSTALL_TMP/managed-version"
+  commit_source="$INSTALL_TMP/managed-commit"
   path_digest "$target_path" > "$digest_source"
   printf '%s\n' "$INSTALL_VERSION" > "$version_source"
+  printf '%s\n' "$SOURCE_COMMIT" > "$commit_source"
   replace_path "$digest_source" "$baseline_path"
   replace_path "$version_source" "$baseline_path.version"
+  replace_path "$commit_source" "$baseline_path.commit"
 }
 
 install_versioned_path() {
@@ -326,7 +357,8 @@ if [ "$SKIP_BUILD" != 1 ]; then
     if [ "$SKIP_APP" != 1 ]; then
       HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" npm ci
       HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-        CARGO_NET_OFFLINE=true DYLD_LIBRARY_PATH="$rust_dyld_library_path" npm run desktop:build
+        CARGO_NET_OFFLINE=true DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
+        npm --workspace @karazhan/desktop run tauri -- build --config "$TAURI_VERSION_CONFIG"
     fi
     DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
       "$RUST_BIN/cargo" build --offline --release -p karazhan-mcp
@@ -353,7 +385,6 @@ cp -R "$SCRIPT_DIR/blueprints/skills/workspace-provisioning" \
 cp -R "$SCRIPT_DIR/blueprints/skills/karazhan-mcp-collaboration" \
   "$PACKAGE_SOURCE/.agents/skills/karazhan-mcp-collaboration"
 
-SOURCE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || printf unknown)
 SKILLS_DIGEST=$(tree_digest "$PACKAGE_SOURCE/.agents/skills")
 if git -C "$SCRIPT_DIR" diff --quiet -- blueprints/skills && \
    git -C "$SCRIPT_DIR" diff --cached --quiet -- blueprints/skills; then
@@ -461,7 +492,7 @@ install_versioned_path "Medivh AGENTS" "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AG
 install_versioned_path "Medivh provisioning Skill" "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
 install_versioned_path "Custodian startup kit" "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
 
-printf 'Karazhan install %s results:\n' "$INSTALL_VERSION"
+printf 'Karazhan install %s (%s) results:\n' "$INSTALL_VERSION" "$SOURCE_COMMIT"
 while IFS='|' read -r label status target detail; do
   printf '  %-26s %-18s %s (%s)\n' "$label" "$status" "$target" "$detail"
 done < "$STATUS_FILE"
