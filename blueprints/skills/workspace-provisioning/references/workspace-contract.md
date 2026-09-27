@@ -8,6 +8,11 @@ A Workspace lets a Custodian continue working without Karazhan, Medivh, or a liv
 
 ```text
 <task-workspace>/
+├─ .agents/
+│  └─ skills/
+│     ├─ PACKAGE.md
+│     ├─ workspace-provisioning/
+│     └─ karazhan-mcp-collaboration/
 ├─ AGENTS.md
 ├─ CLAUDE.md -> AGENTS.md
 ├─ agent_log.md
@@ -24,6 +29,18 @@ A Workspace lets a Custodian continue working without Karazhan, Medivh, or a liv
 ```
 
 `coordination/` is needed only when the work owns direct Children. `repos/` is needed only for development work. Do not create empty structure merely for symmetry.
+
+## Target placement
+
+Before creating a top-level Project Workspace, obtain the user's confirmation of its exact target directory. Before creating a Child, ask whether the user wants an explicit independent target directory. If the user confirms one, the Child may live anywhere inside the separately authorized filesystem boundary; record explicit absolute Workspace, Context, and index paths in both sides' `context/index.md`. If the user does not choose an independent directory, use `<parent-workspace>/children/<child>` as the fallback.
+
+Logical Parent/Child relationships are defined by stable Work IDs and the two indexes, not by physical nesting. A logical relationship never grants write access to an external target. Inspect the target and its filesystem Parent separately from the logical Parent Workspace, and stop on existing identity, ownership, content, or symlink conflicts.
+
+## Custodian Skill package
+
+Every new independent Custodian Workspace contains complete project-local `.agents/skills/workspace-provisioning/` and `.agents/skills/karazhan-mcp-collaboration/` directories. Copy the whole versioned package, including each Skill's `SKILL.md`, `agents/`, `references/`, and `assets/` where present, plus `.agents/skills/PACKAGE.md` evidence that identifies the source repository, full commit, source state, and content digest.
+
+Medivh obtains the package from `$HERMES_HOME/packages/custodian-startup-kit/.agents/skills/`, which is deliberately outside its discoverable `skills/` directory. An authorized Parent Custodian uses its own Workspace-local `.agents/skills/` as the source for a Child. Never substitute a user-global Skill installation, a mutable symlink, or an undocumented source checkout path. Existing Workspace packages are updated only through a separately reviewed operation; provisioning does not silently replace them.
 
 ## Stable manifest
 

@@ -51,6 +51,10 @@ Medivh 是用户的顶层文件系统管家。它按已确认目标创建 Projec
 
 Custodian 是统一负责 Project 或 Task Workspace 的 Agent 角色。Parent、Child 和 Sibling 只表示 Custodian Workspace 之间的关系，不是新的 Agent 类型。Custodian 先写自己的 Workspace 文件，再通过 MCP 注册或同步自己的 Project / Task、查询祖先结构与最近进展、创建 Child 节点、维护 Today 并提交交付。Custodian 报告完成只代表“已交付并等待评审”，不能自动把 Project / Task 设为 `done`。
 
+Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning` 与 `karazhan-mcp-collaboration`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 自身仍只安装和使用 `workspace-provisioning`，不得使用 Custodian 的 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
+
+Workspace 的逻辑 Parent/Child 关系不要求物理目录嵌套。创建顶层 Workspace 前必须让用户确认精确目标目录；创建 Child 前必须让用户确认是否使用一个明确的独立目标目录。用户确认独立目录时，通过双方 `context/index.md` 中的稳定 Work ID 和显式绝对路径建立导航；用户不选择独立目录时，才回退到 `<parent-workspace>/children/<child>`。无论采用哪种布局，逻辑关系都不自动授予目标路径写权限。
+
 ## 3. 产品原则
 
 1. **Today 优先**：打开应用默认进入 Today，让用户以最少切换恢复当天工作。
@@ -549,6 +553,10 @@ loopback HTTP API（仅应用运行期间在线）
 - HTTP 只绑定 `127.0.0.1` / `::1`，使用高熵 token，并验证 Host / Origin。
 - 应用退出后 HTTP 端口释放；MVP 不增加常驻 LaunchAgent。
 - SQLite 数据位于 macOS Application Support 中的产品目录；正式 bundle identifier 由实现冻结。
+- 仓库根 `install.sh` 从当前 checkout 构建并以用户权限安装或更新 `Karazhan.app`、stdio MCP companion、Medivh Hermes Profile 中明确列出的托管文件、非扫描的 Custodian startup package 与 `medivh` 命令；它不执行 `git pull`，不覆盖检测到本地修改的托管文件，也不改写 Hermes 自有配置和运行状态。`memories/USER.md`、其他 memories、sessions 与非托管 Skills 始终归用户所有，不纳入 baseline、不替换也不删除。
+- App 的 `MAJOR.MINOR.PATCH` 版本是全部托管组件的统一安装版本；每个目标分别记录内容 baseline 与已部署版本。安装版本更高才更新已有目标，相同版本为 no-op，降级拒绝；缺失目标可补装。首次接管无版本的已有托管目标前必须生成同目录时间戳备份，内容完全一致时可直接建立 baseline。`KARAZHAN_INSTALL_SKIP_APP=1` 跳过 App 构建、校验和安装，但继续处理 MCP 与 Medivh 组件。安装结束逐项目标报告新建、接管与备份、更新、no-op 或跳过状态。
+- `medivh` 命令以前台方式启动 `hermes -p medivh chat`；启动前同时检查对应 Hermes 进程与 PID lock，活动实例存在时拒绝重复启动，只清理由 launcher 留下且 owner PID 已不存在的陈旧 lock。
+- 构建所需外网默认经本机 `127.0.0.1:7897` 代理；缺少仓库固定版本的 Rust 工具链时，安装脚本先通过官方 rustup 安装到标准用户目录，不依赖临时工具链路径；脚本通过代理显式执行锁文件约束的 Cargo 依赖下载，之后再执行离线 Rust 构建；代理可由显式安装参数覆盖。
 
 Tauri Spike 已验证共享 core、SQLite、HTTP、stdio MCP、安全 Open in Zed、100 行拖拽和重启持久化。正式开发仍需补充可重复的 5 次 GUI 冷启动、空闲 60 秒 CPU / RSS 以及适当的 GUI 验收证据；它们不改变产品模型。
 

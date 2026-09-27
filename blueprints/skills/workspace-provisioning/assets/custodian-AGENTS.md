@@ -12,8 +12,8 @@ Use `context/requirements.md` as the authority for the local goal, scope, and ac
 2. Read `context/index.md` for adopted input versions, change-check entry points, and the complete handoff pointer.
 3. Read the most recent complete handoff and every later log entry. If the pointer is absent/stale, find the latest complete record in this Workspace's log; if none exists, reconstruct from available evidence and record uncertainty.
 4. Read `context/requirements.md` and the explicitly applicable Parent/ancestor versions and decisions, even for a leaf with no local coordination. Read local `context/coordination/` only when this Workspace owns Children. Verify current artifacts and unfinished operations; a crash can leave unlogged changes.
-5. Use `karazhan-mcp-collaboration` for registration, queries, progress, field updates, or Child creation.
-6. Use `workspace-provisioning` only when authorized to create a Child Workspace.
+5. Use the Workspace-local `karazhan-mcp-collaboration` for registration, queries, progress, field updates, or Child creation.
+6. Use the Workspace-local `workspace-provisioning` only when authorized to create a Child Workspace. Ask whether the user wants an explicit independent target directory; use `<this-workspace>/children/<child>` only when the user does not choose one.
 
 ## Context checkpoints
 

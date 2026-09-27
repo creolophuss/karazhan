@@ -40,6 +40,14 @@ npm run desktop:dev
 npm run check
 ```
 
+For a user-local build plus installation of Karazhan, the MCP companion, and the Medivh profile, run from the repository root:
+
+```sh
+./install.sh
+```
+
+The script installs `Karazhan.app` under `~/Applications`, installs `karazhan-mcp` and the `medivh` launcher under `~/.local/bin`, and creates or safely updates `~/.hermes/profiles/medivh`. If the pinned Rust toolchain is unavailable, it first installs rustup and Rust under the standard `~/.cargo` and `~/.rustup` locations through the configured proxy. It explicitly fetches the locked Cargo dependencies through that proxy before switching the Rust builds to offline mode. Managed components use the Tauri `MAJOR.MINOR.PATCH` application version: a higher version updates them, the same version is a no-op, and a downgrade is rejected; per-target versions and content baselines live under `~/.local/share/karazhan-installer`. Existing unversioned managed targets are backed up before initial adoption. `memories/USER.md`, all other memories, sessions, and non-managed Skills remain user-owned and are never replaced or removed. Set `KARAZHAN_INSTALL_SKIP_APP=1` to build/install the MCP and Medivh package without requiring or changing the app bundle. The installer refuses to overwrite locally modified managed files and never runs `git pull`. The `medivh` command checks for an active Medivh profile process and a launcher lock before starting `hermes -p medivh chat`.
+
 Read the operations guide before using the product database. In particular, do not copy an active WAL database; explicit backup/restore currently exists only as validated Rust core APIs, and the stock desktop does not expose its per-launch HTTP token to external processes.
 
 ## Verify

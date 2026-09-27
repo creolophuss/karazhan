@@ -93,6 +93,12 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   assert.match(medivhReadme, /Custodian/);
   assert.match(workspaceSkill, /filesystem-only skill/);
   assert.match(workspaceSkill, /never calls MCP/);
+  assert.match(workspaceSkill, /\.agents\/skills/);
+  assert.match(workspaceSkill, /custodian-startup-kit/);
+  assert.match(workspaceSkill, /ask whether the user wants an explicit independent target directory/);
+  assert.match(workspaceSkill, /<parent-workspace>\/children\/<child>/);
+  assert.match(workspaceContract, /Logical Parent\/Child relationships/);
+  assert.match(workspaceContract, /explicit absolute Workspace/);
   for (const document of [workspaceSkill, workspaceContract, contextContract]) {
     assert.doesNotMatch(document, /\]\(\.\.\/\.\.\//);
   }

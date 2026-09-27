@@ -1,0 +1,294 @@
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const installer = path.join(repositoryRoot, "install.sh");
+
+async function waitFor(pathname, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await stat(pathname);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`timed out waiting for ${pathname}`);
+}
+
+test("local installer owns safe Karazhan and Medivh updates", async (t) => {
+  const installerSource = await readFile(installer, "utf8");
+  assert.doesNotMatch(installerSource, /awb-tauri-spike-tools/);
+  assert.match(installerSource, /https:\/\/sh\.rustup\.rs/);
+  assert.match(
+    installerSource,
+    /DYLD_LIBRARY_PATH="\$rust_dyld_library_path"[\s\\]+"\$RUST_BIN\/cargo" build/,
+  );
+
+  const root = await mkdtemp(path.join(tmpdir(), "karazhan-installer-"));
+  const appSource = path.join(root, "build", "Karazhan.app");
+  const mcpSource = path.join(root, "build", "karazhan-mcp");
+  const appDirectory = path.join(root, "Applications");
+  const binDirectory = path.join(root, "bin");
+  const profileDirectory = path.join(root, "profiles", "medivh");
+  const stateDirectory = path.join(root, "state");
+  const hermes = path.join(root, "mock-hermes");
+  const mockBin = path.join(root, "mock-bin");
+  const cargoHome = path.join(root, ".cargo");
+  const rustupHome = path.join(root, ".rustup");
+  const cargoLog = path.join(root, "cargo.log");
+  const rustTarget =
+    process.arch === "arm64"
+      ? "aarch64-apple-darwin"
+      : "x86_64-apple-darwin";
+
+  await mkdir(path.join(appSource, "Contents", "MacOS"), { recursive: true });
+  await writeFile(path.join(appSource, "Contents", "MacOS", "Karazhan"), "app\n");
+  await writeFile(mcpSource, "#!/bin/sh\nexit 0\n");
+  await chmod(mcpSource, 0o755);
+  await mkdir(mockBin, { recursive: true });
+  await writeFile(path.join(mockBin, "npm"), "#!/bin/sh\nexit 0\n");
+  await writeFile(path.join(mockBin, "pgrep"), "#!/bin/sh\nexit 1\n");
+  await chmod(path.join(mockBin, "npm"), 0o755);
+  await chmod(path.join(mockBin, "pgrep"), 0o755);
+  await writeFile(
+    path.join(mockBin, "curl"),
+    `#!/bin/sh
+set -eu
+output=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--output" ]; then
+    output=$2
+    shift 2
+  else
+    shift
+  fi
+done
+cat > "$output" <<'RUSTUP_INIT'
+#!/bin/sh
+set -eu
+mkdir -p "$CARGO_HOME/bin"
+cat > "$CARGO_HOME/bin/rustup" <<'RUSTUP'
+#!/bin/sh
+set -eu
+toolchain=$3
+target=${rustTarget}
+bin="$RUSTUP_HOME/toolchains/$toolchain-$target/bin"
+mkdir -p "$bin" "$RUSTUP_HOME/toolchains/$toolchain-$target/lib"
+cat > "$bin/cargo" <<'CARGO'
+#!/bin/sh
+printf 'dyld=%s args=%s\\n' "\${DYLD_LIBRARY_PATH:-}" "$*" >> "$KARAZHAN_TEST_CARGO_LOG"
+CARGO
+cat > "$bin/rustc" <<'RUSTC'
+#!/bin/sh
+if [ "\${1:-}" = "--print" ] && [ "\${2:-}" = "sysroot" ]; then
+  CDPATH= cd -- "$(dirname -- "$0")/.." && pwd
+fi
+RUSTC
+chmod 755 "$bin/cargo" "$bin/rustc"
+RUSTUP
+chmod 755 "$CARGO_HOME/bin/rustup"
+RUSTUP_INIT
+`,
+  );
+  await chmod(path.join(mockBin, "curl"), 0o755);
+  await writeFile(
+    hermes,
+    `#!/bin/sh
+set -eu
+if [ "\${1:-}" = "profile" ] && [ "\${2:-}" = "create" ]; then
+  mkdir -p "${profileDirectory}/memories" "${profileDirectory}/skills/project-ops" "${profileDirectory}/sessions"
+  mkdir -p "${binDirectory}"
+  printf 'default soul\\n' > "${profileDirectory}/SOUL.md"
+  printf 'user-owned memory\\n' > "${profileDirectory}/memories/USER.md"
+  printf 'other memory\\n' > "${profileDirectory}/memories/NOTES.md"
+  printf 'project operations\\n' > "${profileDirectory}/skills/project-ops/keep.txt"
+  printf 'session state\\n' > "${profileDirectory}/sessions/keep.txt"
+  printf '#!/bin/sh\\nexec %s -p medivh "$@"\\n' "$0" > "${binDirectory}/medivh"
+  chmod 755 "${binDirectory}/medivh"
+  exit 0
+fi
+if [ "\${KARAZHAN_TEST_HERMES_SLEEP:-0}" != "0" ]; then
+  sleep "$KARAZHAN_TEST_HERMES_SLEEP"
+fi
+`,
+  );
+  await chmod(hermes, 0o755);
+
+  const env = {
+    ...process.env,
+    HOME: root,
+    PATH: `${mockBin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+    CARGO_HOME: cargoHome,
+    RUSTUP_HOME: rustupHome,
+    KARAZHAN_TEST_CARGO_LOG: cargoLog,
+    KARAZHAN_INSTALL_SKIP_BUILD: "0",
+    KARAZHAN_INSTALL_APP_SOURCE: appSource,
+    KARAZHAN_INSTALL_MCP_SOURCE: mcpSource,
+    KARAZHAN_INSTALL_APP_DIR: appDirectory,
+    KARAZHAN_INSTALL_BIN_DIR: binDirectory,
+    KARAZHAN_MEDIVH_PROFILE_DIR: profileDirectory,
+    KARAZHAN_INSTALL_STATE_DIR: stateDirectory,
+    KARAZHAN_HERMES_COMMAND: hermes,
+  };
+  const run = () =>
+    spawnSync("sh", [installer], {
+      cwd: repositoryRoot,
+      env,
+      encoding: "utf8",
+    });
+
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  await stat(
+    path.join(rustupHome, `toolchains/1.98.1-${rustTarget}/bin/cargo`),
+  );
+  const cargoCalls = await readFile(cargoLog, "utf8");
+  assert.match(cargoCalls, /args=fetch --locked$/m);
+  assert.equal(
+    await readFile(path.join(profileDirectory, "SOUL.md"), "utf8"),
+    await readFile(path.join(repositoryRoot, "blueprints/medivh/SOUL.md"), "utf8"),
+  );
+  assert.equal(
+    await readFile(path.join(profileDirectory, "memories/USER.md"), "utf8"),
+    "user-owned memory\n",
+  );
+  assert.equal(
+    await readFile(path.join(profileDirectory, "memories/NOTES.md"), "utf8"),
+    "other memory\n",
+  );
+  assert.equal(
+    await readFile(path.join(profileDirectory, "skills/project-ops/keep.txt"), "utf8"),
+    "project operations\n",
+  );
+  assert.equal(
+    await readFile(path.join(profileDirectory, "sessions/keep.txt"), "utf8"),
+    "session state\n",
+  );
+  await stat(
+    path.join(
+      profileDirectory,
+      "skills/karazhan/workspace-provisioning/SKILL.md",
+    ),
+  );
+  await stat(
+    path.join(
+      profileDirectory,
+      "packages/custodian-startup-kit/.agents/skills/workspace-provisioning/SKILL.md",
+    ),
+  );
+  await stat(
+    path.join(
+      profileDirectory,
+      "packages/custodian-startup-kit/.agents/skills/karazhan-mcp-collaboration/SKILL.md",
+    ),
+  );
+  await stat(
+    path.join(
+      profileDirectory,
+      "packages/custodian-startup-kit/.agents/skills/PACKAGE.md",
+    ),
+  );
+  await stat(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"));
+  await stat(path.join(binDirectory, "karazhan-mcp"));
+  await stat(path.join(binDirectory, "medivh"));
+  assert.match(
+    await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app"), "utf8"),
+    /^[a-f0-9]{64}\n$/,
+  );
+  assert.equal(
+    await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.version"), "utf8"),
+    "0.1.0\n",
+  );
+  await assert.rejects(
+    stat(path.join(stateDirectory, "baseline/medivh/memories/USER.md")),
+  );
+  assert.ok(
+    (await readdir(profileDirectory)).some((name) =>
+      name.startsWith("SOUL.md.pre-karazhan-"),
+    ),
+  );
+  assert.ok(
+    (await readdir(binDirectory)).some((name) =>
+      name.startsWith("medivh.pre-karazhan-"),
+    ),
+  );
+
+  await writeFile(path.join(appSource, "Contents", "MacOS", "Karazhan"), "same-version-change\n");
+  const update = run();
+  assert.equal(update.status, 0, update.stderr);
+  assert.equal(
+    await readFile(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"), "utf8"),
+    "app\n",
+  );
+  assert.match(update.stdout, /no-op/i);
+
+  env.KARAZHAN_INSTALL_VERSION = "0.2.0";
+  const upgrade = run();
+  assert.equal(upgrade.status, 0, upgrade.stderr);
+  assert.equal(
+    await readFile(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"), "utf8"),
+    "same-version-change\n",
+  );
+  assert.equal(
+    await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.version"), "utf8"),
+    "0.2.0\n",
+  );
+  assert.match(upgrade.stdout, /updated/i);
+
+  env.KARAZHAN_INSTALL_VERSION = "0.3.0";
+  env.KARAZHAN_INSTALL_SKIP_APP = "1";
+  env.KARAZHAN_INSTALL_APP_SOURCE = path.join(root, "missing", "Karazhan.app");
+  const skipApp = run();
+  assert.equal(skipApp.status, 0, skipApp.stderr);
+  assert.match(skipApp.stdout, /Karazhan app\s+skipped/i);
+  assert.equal(
+    await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.version"), "utf8"),
+    "0.2.0\n",
+  );
+
+  env.KARAZHAN_INSTALL_VERSION = "0.2.0";
+  const downgrade = run();
+  assert.notEqual(downgrade.status, 0);
+  assert.match(downgrade.stderr, /refusing to downgrade/i);
+  env.KARAZHAN_INSTALL_VERSION = "0.3.0";
+  env.KARAZHAN_INSTALL_SKIP_APP = "0";
+  env.KARAZHAN_INSTALL_APP_SOURCE = appSource;
+
+  const launcher = spawn(path.join(binDirectory, "medivh"), [], {
+    cwd: root,
+    env: { ...env, KARAZHAN_TEST_HERMES_SLEEP: "2" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  t.after(() => launcher.kill("SIGTERM"));
+  await waitFor(path.join(profileDirectory, ".medivh-launch.lock", "pid"));
+  const duplicate = spawnSync(path.join(binDirectory, "medivh"), [], {
+    cwd: root,
+    env,
+    encoding: "utf8",
+  });
+  assert.notEqual(duplicate.status, 0);
+  assert.match(duplicate.stderr, /already running/i);
+  await new Promise((resolve) => launcher.once("exit", resolve));
+
+  const localAgents = path.join(profileDirectory, "AGENTS.md");
+  await writeFile(localAgents, "locally changed\n");
+  const conflict = run();
+  assert.notEqual(conflict.status, 0);
+  assert.match(conflict.stderr, /locally modified/i);
+  assert.equal(await readFile(localAgents, "utf8"), "locally changed\n");
+});

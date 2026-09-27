@@ -19,12 +19,12 @@ The profile-specific files in this directory are:
 
 ```text
 medivh/
-├─ SOUL.md
-├─ AGENTS.md
+├─ SOUL.md                  # installer-managed
+├─ AGENTS.md                # installer-managed
 └─ memories/
-   └─ USER.md
+   └─ USER.md               # reference only; live file is user-owned
 ```
 
-Medivh installs the complete [`workspace-provisioning`](../skills/workspace-provisioning/SKILL.md) directory, including its `references/` and `assets/`. Custodians use the separate [`karazhan-mcp-collaboration`](../skills/karazhan-mcp-collaboration/SKILL.md) skill; that skill is deliberately outside the Medivh profile.
+Medivh installs the complete [`workspace-provisioning`](../skills/workspace-provisioning/SKILL.md) directory, including its `references/` and `assets/`. The local installer also places a versioned Custodian startup package at `$HERMES_HOME/packages/custodian-startup-kit`; this non-Skill package contains both complete Skills for copying into a new Workspace's `.agents/skills/`. Custodians use the separate [`karazhan-mcp-collaboration`](../skills/karazhan-mcp-collaboration/SKILL.md) skill from their Workspace. That Skill remains outside Medivh's discoverable `skills/`, so Medivh never invokes it for itself.
 
-This repository is the canonical blueprint, not an instruction to overwrite a live Hermes profile. Installation is a separate, reviewed operation that must preserve profile-owned configuration and existing Workspaces.
+This repository is the canonical blueprint, not an instruction to overwrite an entire live Hermes profile. The installer versions only its named targets. A live `memories/USER.md`, every other memory, `sessions/`, and unrelated Skills are user-owned and must never be replaced or deleted by installation; the checked-in `USER.md` is a reference for the expected role context, not an installer source. Existing Workspaces are likewise outside installation scope.
