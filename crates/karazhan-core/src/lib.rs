@@ -1180,7 +1180,10 @@ impl Database {
         Ok(self.connection.query_row(
             "SELECT n.id, n.parent_id, n.key, n.title, n.summary, n.goal,
                     n.acceptance_markdown, n.work_status, n.priority, n.blocker, n.revision,
-                    EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
+                    EXISTS (SELECT 1 FROM progress_events pe
+                            WHERE pe.subject_node_id = n.id
+                              AND pe.event_type IN ('progress', 'delivery')
+                              AND pe.summary <> 'work item fields updated')
              FROM work_nodes n JOIN tasks t ON t.node_id = n.id
              WHERE n.id = ?1",
             [id],
@@ -1192,7 +1195,10 @@ impl Database {
         let mut statement = self.connection.prepare(
             "SELECT n.id, n.parent_id, n.key, n.title, n.summary, n.goal,
                     n.acceptance_markdown, n.work_status, n.priority, n.blocker, n.revision,
-                    EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
+                    EXISTS (SELECT 1 FROM progress_events pe
+                            WHERE pe.subject_node_id = n.id
+                              AND pe.event_type IN ('progress', 'delivery')
+                              AND pe.summary <> 'work item fields updated')
              FROM work_nodes n JOIN tasks t ON t.node_id = n.id
              ORDER BY n.parent_id, n.position, n.id",
         )?;
@@ -1217,7 +1223,10 @@ impl Database {
             "SELECT n.id, n.parent_id, n.kind, n.key, n.title, n.summary, n.goal,
                     n.acceptance_markdown, n.work_status, n.priority, n.blocker, n.position,
                     n.revision,
-                    EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
+                    EXISTS (SELECT 1 FROM progress_events pe
+                            WHERE pe.subject_node_id = n.id
+                              AND pe.event_type IN ('progress', 'delivery')
+                              AND pe.summary <> 'work item fields updated')
              FROM work_nodes n
              WHERE n.kind IN ('project', 'task')
                AND NOT EXISTS (
@@ -1531,7 +1540,10 @@ impl Database {
             let mut statement = self.connection.prepare(
                 "SELECT n.id, n.kind, n.title, n.summary, ti.position, ti.revision,
                         n.revision, n.work_status, n.priority, n.blocker,
-                        EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id),
+                        EXISTS (SELECT 1 FROM progress_events pe
+                                WHERE pe.subject_node_id = n.id
+                                  AND pe.event_type IN ('progress', 'delivery')
+                                  AND pe.summary <> 'work item fields updated'),
                         COALESCE((SELECT is_quick_item FROM tasks WHERE node_id = n.id), 0)
                  FROM today_items ti
                  JOIN work_nodes n ON n.id = ti.node_id
@@ -1606,7 +1618,10 @@ impl Database {
                     "SELECT n.id, n.parent_id, n.key, n.title, n.summary, n.goal,
                             n.acceptance_markdown, n.work_status, n.priority, n.blocker,
                             n.revision,
-                            EXISTS (SELECT 1 FROM progress_events pe WHERE pe.subject_node_id = n.id)
+                            EXISTS (SELECT 1 FROM progress_events pe
+                                    WHERE pe.subject_node_id = n.id
+                                      AND pe.event_type IN ('progress', 'delivery')
+                                      AND pe.summary <> 'work item fields updated')
                      FROM work_nodes n JOIN tasks t ON t.node_id = n.id
                      WHERE n.parent_id = ?1
                        AND n.archived_at IS NULL
@@ -1650,6 +1665,8 @@ impl Database {
                     summary, step_status, blocker, actor_type, actor_ref, channel
              FROM progress_events
              WHERE subject_node_id = ?1
+               AND event_type IN ('progress', 'delivery')
+               AND summary <> 'work item fields updated'
              ORDER BY occurred_at DESC, recorded_at DESC, id DESC
              LIMIT ?2",
         )?;

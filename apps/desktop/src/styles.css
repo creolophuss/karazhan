@@ -956,12 +956,12 @@ h1 {
 }
 
 .today-zed-wrap {
-  position: relative;
-  grid-column: 4;
-  grid-row: 1;
+  display: contents;
 }
 
 .today-zed {
+  grid-column: 4;
+  grid-row: 1;
   padding: 0.28rem 0.55rem;
   border: 1px solid #e1d9cf;
   border-radius: 0.4rem;
@@ -981,6 +981,18 @@ h1 {
 .today-zed:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+.today-zed-error {
+  grid-column: 3 / 7;
+  grid-row: 2;
+  margin: 0 1rem 0.55rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid #e1c4be;
+  border-radius: 0.35rem;
+  color: #93463e;
+  background: #fff6f3;
+  font-size: 0.65rem;
 }
 
 .quick-controls {

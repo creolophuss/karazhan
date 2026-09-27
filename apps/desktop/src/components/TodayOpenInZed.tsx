@@ -34,7 +34,7 @@ export default function TodayOpenInZed({ nodeId }: TodayOpenInZedProps) {
         {state.status === "opening" ? "Opening…" : "Open in Zed"}
       </button>
       {state.status === "error" && (
-        <span className="compact-save-error" role="alert">{state.message}</span>
+        <span className="today-zed-error" role="alert">{state.message}</span>
       )}
     </span>
   );

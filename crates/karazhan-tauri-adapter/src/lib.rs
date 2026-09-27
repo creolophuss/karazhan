@@ -116,7 +116,11 @@ impl TauriAdapter {
         };
         let binding = bindings
             .iter()
-            .find(|binding| binding.kind == "workspace" && binding.is_primary)
+            .find(|binding| {
+                binding.kind == "workspace"
+                    && binding.is_primary
+                    && binding.availability == "available"
+            })
             .ok_or_else(|| {
                 adapter_error(
                     "workspace_missing",

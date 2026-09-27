@@ -215,4 +215,6 @@ test("Today restores the Spike sidebar palette and conditionally opens Zed by no
   assert.match(app, /<TodayOpenInZed nodeId=\{item\.node_id\}/);
   assert.match(zed, /karazhanClient\.openInZed\(nodeId\)/);
   assert.doesNotMatch(zed, /locator|workspacePath|shell/);
+  assert.match(zed, /className="today-zed-error"/);
+  assert.match(styles, /\.today-zed-error\s*\{[\s\S]*?grid-row:\s*2/);
 });

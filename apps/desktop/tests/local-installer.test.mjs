@@ -37,6 +37,9 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   assert.match(installerSource, /git -C "\$SCRIPT_DIR" rev-list --count HEAD/);
   assert.match(installerSource, /KARAZHAN_INSTALL_ALLOW_DIRTY/);
   assert.match(installerSource, /tauri-install-version\.json/);
+  assert.match(installerSource, /CARGO_TARGET_DIR="\$INSTALL_TMP\/app-target"/);
+  assert.match(installerSource, /\$INSTALL_TMP\/app-target\/release\/bundle\/macos\/Karazhan\.app/);
+  assert.match(installerSource, /rm -rf -- "\$STALE_APP_BUNDLE"/);
   assert.match(
     installerSource,
     /DYLD_LIBRARY_PATH="\$rust_dyld_library_path"[\s\\]+"\$RUST_BIN\/cargo" build/,
@@ -220,6 +223,7 @@ fi
     ),
   );
   await stat(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"));
+  await stat(path.join(appSource, "Contents/MacOS/Karazhan"));
   await stat(path.join(binDirectory, "karazhan-mcp"));
   await stat(path.join(binDirectory, "medivh"));
   assert.match(

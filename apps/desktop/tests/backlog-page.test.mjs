@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  backlogParentOptions,
   createBacklog,
   discardBacklog,
   loadBacklog,
@@ -11,6 +12,28 @@ import {
   reorderBacklog,
   updateBacklog,
 } from "../src/features/backlog.ts";
+
+test("Backlog Parent options expose complete Root-hidden hierarchy", () => {
+  const item = (id, parent_id, kind, title, position) => ({
+    id,
+    parent_id,
+    kind,
+    title,
+    position,
+  });
+  assert.deepEqual(backlogParentOptions([
+    item("task-2", "project-1", "task", "Build", 1),
+    item("project-2", "project-1", "project", "Desktop", 0),
+    item("task-1", "project-2", "task", "Filters", 0),
+    item("project-1", "00000000-0000-0000-0000-000000000001", "project", "Karazhan", 0),
+  ]), [
+    ["00000000-0000-0000-0000-000000000001", "Top level"],
+    ["project-1", "Karazhan"],
+    ["project-2", "Karazhan › Desktop"],
+    ["task-1", "Karazhan › Desktop › Filters"],
+    ["task-2", "Karazhan › Build"],
+  ]);
+});
 
 test("Backlog feature uses the shared query and command contract", async () => {
   const queries = [];
@@ -93,7 +116,10 @@ test("Backlog page exposes filters, right-click actions, creation, and cross-Par
   assert.match(source, /projects-add/);
   assert.match(source, /onContextMenu=/);
   assert.match(source, /action-menu context-menu/);
-  assert.match(source, /parent_breadcrumb/);
+  assert.match(source, /backlogParentOptions\(state\.tree\)/);
+  assert.match(source, /const promotionParents[\s\S]*?backlogParentOptions/);
+  assert.match(source, /requestSequence\.current/);
+  assert.match(source, /requestId !== requestSequence\.current/);
   assert.match(source, /item\.notes && <small className="backlog-description">\{item\.notes\}<\/small>/);
   assert.doesNotMatch(source, /<small>\{breadcrumb\(item\)\}<\/small>/);
   assert.match(source, /drag-handle/);

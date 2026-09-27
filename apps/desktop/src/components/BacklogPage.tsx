@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import {
+  backlogParentOptions,
   createBacklog,
   discardBacklog,
   loadBacklog,
@@ -39,10 +40,6 @@ type PromotionDraft = {
 };
 type ContextMenuState = { item: BacklogItem; x: number; y: number };
 
-function breadcrumb(item: BacklogItem) {
-  return item.parent_breadcrumb.length === 0 ? "Top level" : item.parent_breadcrumb.join(" › ");
-}
-
 function draftFrom(item: BacklogItem): BacklogEditInput {
   return {
     title: item.title,
@@ -71,20 +68,25 @@ export default function BacklogPage() {
   const [dragged, setDragged] = useState<BacklogItem | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>({ status: "idle", message: "" });
+  const requestSequence = useRef(0);
 
-  const refresh = useCallback(async (nextFilter: BacklogFilter = filter) => {
-    const [items, tree] = await Promise.all([loadBacklog(karazhanClient, nextFilter), loadProjectTaskTree()]);
-    setState({ status: "ready", items, tree });
-  }, [filter]);
+  const refresh = useCallback(async (nextFilter: BacklogFilter) => {
+    const requestId = ++requestSequence.current;
+    try {
+      const [items, tree] = await Promise.all([loadBacklog(karazhanClient, nextFilter), loadProjectTaskTree()]);
+      if (requestId !== requestSequence.current) return;
+      setState({ status: "ready", items, tree });
+    } catch (error) {
+      if (requestId !== requestSequence.current) return;
+      setState({ status: "error", message: describeClientError(error) });
+      throw error;
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    Promise.all([loadBacklog(), loadProjectTaskTree()]).then(
-      ([items, tree]) => { if (active) setState({ status: "ready", items, tree }); },
-      (error: unknown) => { if (active) setState({ status: "error", message: describeClientError(error) }); },
-    );
-    return () => { active = false; };
-  }, []);
+    void refresh({}).catch(() => undefined);
+    return () => { requestSequence.current += 1; };
+  }, [refresh]);
 
   useEffect(() => {
     if (dragged === null) return;
@@ -101,12 +103,9 @@ export default function BacklogPage() {
   }, [dragged]);
 
   const parentOptions = useMemo(() => {
-    const options = new Map<string, string>([[SYSTEM_ROOT_ID, "Top level"]]);
-    if (state.status === "ready") {
-      for (const item of state.items) options.set(item.parent_id, breadcrumb(item));
-      for (const item of state.tree) options.set(item.id, item.title);
-    }
-    return [...options.entries()];
+    return state.status === "ready"
+      ? backlogParentOptions(state.tree)
+      : [[SYSTEM_ROOT_ID, "Top level"] as [string, string]];
   }, [state]);
 
   function changeFilter(name: keyof BacklogFilter, value: string) {
@@ -114,8 +113,7 @@ export default function BacklogPage() {
     if (value) Object.assign(next, { [name]: value });
     else delete next[name];
     setFilter(next);
-    setState({ status: "loading" });
-    void refresh(next).catch((error: unknown) => setState({ status: "error", message: describeClientError(error) }));
+    void refresh(next).catch(() => undefined);
   }
 
   async function save(item: BacklogItem) {
@@ -125,7 +123,7 @@ export default function BacklogPage() {
     try {
       await updateBacklog(karazhanClient, item.id, item.revision, draft);
       setEditingIds((current) => { const next = new Set(current); next.delete(item.id); return next; });
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog item saved." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
   }
@@ -135,7 +133,7 @@ export default function BacklogPage() {
     try {
       await discardBacklog(karazhanClient, item.id, item.revision);
       setDiscardId(null);
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog item discarded; its history is retained." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
   }
@@ -148,7 +146,7 @@ export default function BacklogPage() {
     try {
       await moveBacklog(karazhanClient, item.id, parentId, item.revision);
       setMoveId(null);
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog item moved." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
   }
@@ -171,7 +169,7 @@ export default function BacklogPage() {
         const targetPosition = item.position + (sourceIndex >= 0 && sourceIndex < targetIndex ? 1 : 0);
         await moveBacklog(karazhanClient, dragged.id, item.parent_id, dragged.revision, targetPosition);
       }
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog order saved." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
     finally { setDragged(null); setDropTargetId(null); }
@@ -197,7 +195,7 @@ export default function BacklogPage() {
     try {
       await promoteBacklog(karazhanClient, promotion.source.id, promotion.source.revision, target, promotion.idempotencyKey);
       setPromotion(null);
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog item promoted." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
   }
@@ -218,15 +216,15 @@ export default function BacklogPage() {
         tags: String(form.get("create-tags") ?? "").split(","),
       });
       setCreateOpen(false);
-      await refresh();
+      await refresh(filter);
       setFeedback({ status: "success", message: "Backlog item created." });
     } catch (error) { setFeedback({ status: "error", message: describeClientError(error) }); }
   }
 
   const promotionParents = state.status === "ready" && promotion
-    ? [[SYSTEM_ROOT_ID, "Top level"] as const, ...state.tree
-        .filter((item) => promotion.targetType === "task" || item.kind === "project")
-        .map((item) => [item.id, item.title] as const)]
+    ? backlogParentOptions(
+        state.tree.filter((item) => promotion.targetType === "task" || item.kind === "project"),
+      )
     : [];
 
   return <>

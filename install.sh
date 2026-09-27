@@ -9,7 +9,8 @@ BIN_DIR=${KARAZHAN_INSTALL_BIN_DIR:-"$HOME/.local/bin"}
 PROFILE_DIR=${KARAZHAN_MEDIVH_PROFILE_DIR:-"$HOME/.hermes/profiles/$PROFILE_NAME"}
 STATE_DIR=${KARAZHAN_INSTALL_STATE_DIR:-"$HOME/.local/share/karazhan-installer"}
 LAUNCHER_TARGET="$BIN_DIR/medivh"
-APP_SOURCE=${KARAZHAN_INSTALL_APP_SOURCE:-"$SCRIPT_DIR/target/release/bundle/macos/Karazhan.app"}
+APP_SOURCE_OVERRIDE=${KARAZHAN_INSTALL_APP_SOURCE:-}
+STALE_APP_BUNDLE="$SCRIPT_DIR/target/release/bundle/macos/Karazhan.app"
 MCP_SOURCE=${KARAZHAN_INSTALL_MCP_SOURCE:-"$SCRIPT_DIR/target/release/karazhan-mcp"}
 SKIP_BUILD=${KARAZHAN_INSTALL_SKIP_BUILD:-0}
 SKIP_APP=${KARAZHAN_INSTALL_SKIP_APP:-0}
@@ -81,6 +82,11 @@ version_compare() {
 [ "$(version_compare "$INSTALL_VERSION" "$INSTALL_VERSION")" = 0 ] || die "invalid install version: $INSTALL_VERSION"
 
 INSTALL_TMP=$(mktemp -d "${TMPDIR:-/tmp}/karazhan-install.XXXXXX")
+if [ -n "$APP_SOURCE_OVERRIDE" ]; then
+  APP_SOURCE=$APP_SOURCE_OVERRIDE
+else
+  APP_SOURCE="$INSTALL_TMP/app-target/release/bundle/macos/Karazhan.app"
+fi
 cleanup_install_tmp() {
   rm -rf "$INSTALL_TMP"
 }
@@ -357,7 +363,8 @@ if [ "$SKIP_BUILD" != 1 ]; then
     if [ "$SKIP_APP" != 1 ]; then
       HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" npm ci
       HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-        CARGO_NET_OFFLINE=true DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
+        CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$INSTALL_TMP/app-target" \
+        DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
         npm --workspace @karazhan/desktop run tauri -- build --config "$TAURI_VERSION_CONFIG"
     fi
     DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
@@ -482,6 +489,9 @@ preflight_managed_path "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_RO
 
 if [ "$SKIP_APP" != 1 ]; then
   install_versioned_path "Karazhan app" "$APP_SOURCE" "$APP_DIR/Karazhan.app" "$BASELINE_ROOT/app/Karazhan.app"
+  if [ -z "$APP_SOURCE_OVERRIDE" ] && [ -d "$STALE_APP_BUNDLE" ]; then
+    rm -rf -- "$STALE_APP_BUNDLE"
+  fi
 else
   printf '%s|skipped|%s|KARAZHAN_INSTALL_SKIP_APP=1\n' "Karazhan app" "$APP_DIR/Karazhan.app" >> "$STATUS_FILE"
 fi

@@ -19,6 +19,13 @@ pub fn database_path(app_data_directory: &Path) -> PathBuf {
     app_data_directory.join(DATABASE_FILENAME)
 }
 
+pub fn trusted_workspace_roots(app_data_directory: &Path, home_directory: &Path) -> Vec<PathBuf> {
+    vec![
+        home_directory.to_path_buf(),
+        app_data_directory.join("workspaces"),
+    ]
+}
+
 pub fn run() {
     let builder = karazhan_tauri_adapter::with_ipc_handler(tauri::Builder::default());
     builder
@@ -26,13 +33,17 @@ pub fn run() {
             let app_data_directory = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_directory)?;
 
-            let trusted_workspace_root = app_data_directory.join("workspaces");
-            std::fs::create_dir_all(&trusted_workspace_root)?;
+            let managed_workspace_root = app_data_directory.join("workspaces");
+            std::fs::create_dir_all(&managed_workspace_root)?;
+            let home_directory = app.path().home_dir()?;
 
             let application =
                 share_application(Application::open(database_path(&app_data_directory))?);
             let tauri_adapter = TauriAdapter::from_shared(application.clone())
-                .with_zed(vec![trusted_workspace_root], Arc::new(MacOsZedLauncher))
+                .with_zed(
+                    trusted_workspace_roots(&app_data_directory, &home_directory),
+                    Arc::new(MacOsZedLauncher),
+                )
                 .map_err(|error| io::Error::other(error.message))?;
             app.manage(tauri_adapter);
 

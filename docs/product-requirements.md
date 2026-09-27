@@ -1,7 +1,7 @@
 # Karazhan（Agent Workbench 阶段 3）产品需求
 
 > 初次定稿：2026-09-21
-> 最近修订：2026-09-26
+> 最近修订：2026-09-27
 > 状态：用户已确认定稿；阶段 3 唯一事实来源
 > 目标读者：用户、产品设计 Child、TDD / 开发 Child
 > 用途：作为阶段 3 后续设计、TDD、实现与验收的唯一事实来源
@@ -267,7 +267,9 @@ Today 是一个 Project / Task 混合列表，必须支持：
 
 Quick item 也不是新领域类型，而是带 `is_quick_item` 标记的普通 Task；用户输入的 Description 存入其必填标题字段。创建必须原子加入 Today，checkbox 继续使用带 revision 检查的 Task 状态命令，删除使用带幂等、actor/channel 与事务语义的专用命令。Projects & Tasks 投影必须排除 Quick item。
 
-Today 展开区显示最近 3 条 Steps / Progress，并可切换 Show all / Show recent；Project、Task 和直接 Child Task 均可通过右键 Add step。Today 底部继续显示全局 Recent Progress。Today 首屏读取产品数据库，不等待 Workspace 检查或日志同步完成。
+Today 展开区显示最近 3 条有业务意义的 Steps / Progress，并可切换 Show all / Show recent；Project、Task 和直接 Child Task 均可通过右键 Add step。Today membership/order、Parent 变更、普通字段保存等结构化审计事件继续保留在完整 timeline，但不进入 Recent / All steps、不占用最近 3 条名额，也不单独使条目出现 disclosure。Today 底部继续显示全局 Recent Progress。Today 首屏读取产品数据库，不等待 Workspace 检查或日志同步完成。
+
+当前可见的 Today 与 Projects & Tasks 页面必须及时反映 HTTP / MCP 等外部进程的写入：可见期间至多约 1 秒刷新一次，窗口重新聚焦或页面恢复可见时立即刷新。后台刷新不得重置用户的展开/折叠状态，不得并发发起重叠查询，相同数据不得触发无意义的页面重渲染。
 
 ### 7.2 Projects & Tasks
 
@@ -299,6 +301,7 @@ Backlog 页面是全局 Work Tree 中所有 Backlog 叶子的专用投影。默�
 
 - 使用与 Today、Projects & Tasks 一致的标题样式和标题旁圆形 `+`；创建表单包含 Title、Description、Parent、Kind、Priority 和逗号分隔 Tags；
 - 提供 Parent、kind、priority 和 tag 过滤，不提供可见 status 过滤；Parent、kind 和 priority 为无边框控件，Tag 是唯一带搜索框边框的字段；
+- Parent 选择器列出所有合法 Project / Task，并用隐藏系统 Root 的完整 breadcrumb 表达层级；筛选请求并发返回时只允许最后一次选择更新列表；
 - 通过右键菜单打开 Edit、Move、Promote 和 Discard，不在列表行常驻这些按钮；
 - 在当前行展开 Edit 表单，编辑 title、Description、kind、priority 和 tags；
 - `Save` 保存并收起，`Cancel` 恢复最近一次已保存内容；
@@ -554,6 +557,7 @@ loopback HTTP API（仅应用运行期间在线）
 - 应用退出后 HTTP 端口释放；MVP 不增加常驻 LaunchAgent。
 - SQLite 数据位于 macOS Application Support 中的产品目录；正式 bundle identifier 由实现冻结。
 - 仓库根 `install.sh` 从当前 checkout 构建并以用户权限安装或更新 `Karazhan.app`、stdio MCP companion、Medivh Hermes Profile 中明确列出的托管文件、非扫描的 Custodian startup package 与 `medivh` 命令；它不执行 `git pull`，不覆盖检测到本地修改的托管文件，也不改写 Hermes 自有配置和运行状态。`memories/USER.md`、其他 memories、sessions 与非托管 Skills 始终归用户所有，不纳入 baseline、不替换也不删除。
+- 普通 release build 只生成可执行文件，不在 repository target 中留下可被 Launch Services 发现的 `.app`；`install.sh` 在临时 target 中生成安装 bundle，安装完成后仅保留 `~/Applications/Karazhan.app`，避免同一 bundle identifier 出现两份可启动副本。
 - 全部托管组件使用同一个 commit 派生安装版本：`tauri.conf.json` 提供基础 `major.minor`，完整 Git 历史中 `HEAD` 可达 commit 数作为 patch；构建通过临时 Tauri 配置把该版本写入 App，不修改 tracked 文件。正常安装要求非 shallow checkout 且不存在 tracked 未提交修改，并为每个目标分别记录内容 baseline、已部署版本与完整 commit SHA。安装版本更高才更新已有目标，相同版本为 no-op，降级拒绝；缺失目标可补装。首次接管无版本的已有托管目标前必须生成同目录时间戳备份，内容完全一致时可直接建立 baseline。`KARAZHAN_INSTALL_SKIP_APP=1` 跳过 App 构建、校验和安装，但继续处理 MCP 与 Medivh 组件。安装结束逐项目标报告新建、接管与备份、更新、no-op 或跳过状态。
 - `medivh` 命令以前台方式启动 `hermes -p medivh chat`；启动前同时检查对应 Hermes 进程与 PID lock，活动实例存在时拒绝重复启动，只清理由 launcher 留下且 owner PID 已不存在的陈旧 lock。
 - 构建所需外网默认经本机 `127.0.0.1:7897` 代理；缺少仓库固定版本的 Rust 工具链时，安装脚本先通过官方 rustup 安装到标准用户目录，不依赖临时工具链路径；脚本通过代理显式执行锁文件约束的 Cargo 依赖下载，之后再执行离线 Rust 构建；代理可由显式安装参数覆盖。
@@ -673,12 +677,13 @@ SQLite 必须直接或通过领域事务保证：
 
 25. UI、HTTP 与 MCP 对同一领域命令产生相同结果和错误语义。
 26. Custodian 能创建 Child Task、追加 progress、维护 Today 并查询 Project / Task 汇总。
-27. Open in Zed 只接受节点 ID；有效 Workspace 可打开，缺失、越界和注入路径被安全拒绝。
+27. Open in Zed 只接受节点 ID；当前用户 home 或应用数据 Workspace root 内的 available primary Workspace 可打开，缺失、越界和注入路径被安全拒绝；结构化失败信息在 Today 行内完整可见且不覆盖相邻控件。
 28. 应用启动时 HTTP 需要 token；应用退出后端口释放；stdio MCP 不向 stdout 写协议外日志。
 29. App 与 MCP 并发启动 migration 时只有一个执行；另一个得到明确错误。
-30. **Import 恢复演练（延期，不计入当前 MVP 验收）**：完成一次 dry-run → apply → replay no-op → migration 故障 → restore → 核心计数核对演练。
-31. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
-32. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
+30. 当前可见的 Today 与 Projects & Tasks 在外部写入后约 1 秒内刷新，并在 focus / visibility 恢复时立即刷新；后台刷新不重置展开状态、不产生重叠请求或相同快照重渲染。
+31. **Import 恢复演练（延期，不计入当前 MVP 验收）**：完成一次 dry-run → apply → replay no-op → migration 故障 → restore → 核心计数核对演练。
+32. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
+33. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
 
 ## 16. 定稿确认
 

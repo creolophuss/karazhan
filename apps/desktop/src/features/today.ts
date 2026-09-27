@@ -255,6 +255,13 @@ export function checkboxStatus(checked: boolean): WorkStatus {
   return checked ? "done" : "ready";
 }
 
+export function isBusinessStep(event: Pick<ProgressEvent, "event_type" | "summary">): boolean {
+  return (
+    (event.event_type === "progress" || event.event_type === "delivery") &&
+    event.summary !== "work item fields updated"
+  );
+}
+
 export async function loadRecentSteps(
   client: TodayReader,
   nodeId: string,
@@ -267,7 +274,7 @@ export async function loadRecentSteps(
   if (result.type !== "progress_events") {
     throw new Error(`expected progress_events query result, received ${result.type}`);
   }
-  return result.payload;
+  return result.payload.filter(isBusinessStep);
 }
 
 export async function loadAllSteps(
@@ -278,7 +285,7 @@ export async function loadAllSteps(
   if (result.type !== "progress_events") {
     throw new Error(`expected progress_events query result, received ${result.type}`);
   }
-  return result.payload;
+  return result.payload.filter(isBusinessStep);
 }
 
 export function allTodayNodeIds(

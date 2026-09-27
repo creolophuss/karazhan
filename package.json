@@ -8,7 +8,7 @@
   "scripts": {
     "check": "./scripts/check.sh",
     "desktop:dev": "npm --workspace @karazhan/desktop run tauri dev",
-    "desktop:build": "npm --workspace @karazhan/desktop run tauri build",
+    "desktop:build": "sh ./scripts/build-desktop.sh",
     "frontend:check": "npm --workspace @karazhan/desktop run check"
   }
 }

@@ -6,9 +6,36 @@ import {
   type BacklogPromotionTarget,
   type KarazhanClient,
   type Priority,
+  type ProjectTaskItem,
 } from "../lib/karazhan-client.ts";
 
 type BacklogReader = Pick<KarazhanClient, "query">;
+const SYSTEM_ROOT_ID = "00000000-0000-0000-0000-000000000001";
+
+export function backlogParentOptions(
+  items: readonly Pick<ProjectTaskItem, "id" | "parent_id" | "title" | "position">[],
+): [string, string][] {
+  const children = new Map<string, typeof items[number][]>();
+  for (const item of items) {
+    const siblings = children.get(item.parent_id) ?? [];
+    siblings.push(item);
+    children.set(item.parent_id, siblings);
+  }
+  for (const siblings of children.values()) {
+    siblings.sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
+  }
+
+  const options: [string, string][] = [[SYSTEM_ROOT_ID, "Top level"]];
+  const visit = (parentId: string, ancestors: readonly string[]) => {
+    for (const item of children.get(parentId) ?? []) {
+      const path = [...ancestors, item.title];
+      options.push([item.id, path.join(" › ")]);
+      visit(item.id, path);
+    }
+  };
+  visit(SYSTEM_ROOT_ID, []);
+  return options;
+}
 
 function uiContext(idempotencyKey: string = crypto.randomUUID()) {
   return {

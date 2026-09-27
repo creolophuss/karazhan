@@ -6,6 +6,7 @@ import {
   checkboxStatus,
   describeClientError,
   directChildTaskRows,
+  isBusinessStep,
   isTodayItemExpandable,
   loadRecentSteps,
   loadAllSteps,
@@ -150,7 +151,7 @@ test("leaf Task checkbox maps directly to done and ready", () => {
 
 test("Recent steps uses the shared recent-progress query", async () => {
   const calls = [];
-  const payload = [{ id: "event-1", summary: "Resolved the blocker" }];
+  const payload = [{ id: "event-1", event_type: "progress", summary: "Resolved the blocker" }];
   const client = {
     async query(query) {
       calls.push(query);
@@ -158,7 +159,7 @@ test("Recent steps uses the shared recent-progress query", async () => {
     },
   };
 
-  assert.equal(await loadRecentSteps(client, "project-1"), payload);
+  assert.deepEqual(await loadRecentSteps(client, "project-1"), payload);
   assert.deepEqual(calls, [
     { type: "recent_progress", node_id: "project-1", limit: 3 },
   ]);
@@ -166,7 +167,11 @@ test("Recent steps uses the shared recent-progress query", async () => {
 
 test("all Steps uses the shared progress timeline query", async () => {
   const calls = [];
-  const payload = [{ id: "event-1", summary: "First step" }];
+  const payload = [
+    { id: "audit-1", event_type: "today_reordered", summary: "Today order changed" },
+    { id: "audit-2", event_type: "progress", summary: "work item fields updated" },
+    { id: "event-1", event_type: "progress", summary: "First step" },
+  ];
   const client = {
     async query(query) {
       calls.push(query);
@@ -174,8 +179,16 @@ test("all Steps uses the shared progress timeline query", async () => {
     },
   };
 
-  assert.equal(await loadAllSteps(client, "task-1"), payload);
+  assert.deepEqual(await loadAllSteps(client, "task-1"), [payload[2]]);
   assert.deepEqual(calls, [{ type: "progress_timeline", node_id: "task-1" }]);
+});
+
+test("Today Steps exclude structural and generic field audit events", () => {
+  assert.equal(isBusinessStep({ event_type: "today_added", summary: "added to Today" }), false);
+  assert.equal(isBusinessStep({ event_type: "today_reordered", summary: "Today order changed" }), false);
+  assert.equal(isBusinessStep({ event_type: "progress", summary: "work item fields updated" }), false);
+  assert.equal(isBusinessStep({ event_type: "progress", summary: "Implemented filters" }), true);
+  assert.equal(isBusinessStep({ event_type: "delivery", summary: "Ready for review" }), true);
 });
 
 test("Recent steps colors status labels and pending step text", async () => {

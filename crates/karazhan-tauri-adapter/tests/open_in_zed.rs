@@ -76,6 +76,17 @@ fn database_with_workspace(locator: Option<&str>) -> Database {
     database
 }
 
+fn mark_workspace_missing(database: &mut Database) {
+    database
+        .update_resource_availability(
+            "50000000-0000-0000-0000-000000000020",
+            ResourceAvailability::Missing,
+            1,
+            metadata("zed:mark-workspace-missing"),
+        )
+        .expect("mark Workspace missing");
+}
+
 #[test]
 fn node_id_resolves_a_canonical_trusted_workspace_before_launch() {
     let directory = tempfile::tempdir().expect("temporary root");
@@ -128,6 +139,26 @@ fn missing_workspace_and_launch_services_failure_are_structured() {
     .open_in_zed(PROJECT_ID)
     .expect_err("Launch Services failure must be returned");
     assert_eq!(launch_failure.code, "zed_launch_failed");
+}
+
+#[test]
+fn unavailable_primary_workspace_is_not_opened() {
+    let directory = tempfile::tempdir().expect("temporary root");
+    let trusted_root = directory.path().join("trusted");
+    let workspace = trusted_root.join("project");
+    std::fs::create_dir_all(&workspace).expect("workspace directory");
+    let mut database =
+        database_with_workspace(Some(workspace.to_str().expect("UTF-8 fixture path")));
+    mark_workspace_missing(&mut database);
+    let launcher = Arc::new(RecordingLauncher::default());
+    let error = TauriAdapter::new(Application::new(database))
+        .with_zed(vec![trusted_root], launcher.clone())
+        .expect("configure trusted root")
+        .open_in_zed(PROJECT_ID)
+        .expect_err("missing Workspace availability must fail");
+
+    assert_eq!(error.code, "workspace_missing");
+    assert!(launcher.paths.lock().expect("recorded paths").is_empty());
 }
 
 #[test]

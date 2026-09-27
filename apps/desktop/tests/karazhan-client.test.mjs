@@ -80,3 +80,22 @@ test("Projects membership changes refresh the mounted Today page state", async (
   );
   assert.match(projectsSource, /onTodayChanged\(todayItems\)/);
 });
+
+test("visible Today and Projects pages promptly refresh external writes", async () => {
+  const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const projectsSource = await readFile(
+    new URL("../src/components/ProjectsPage.tsx", import.meta.url),
+    "utf8",
+  );
+
+  for (const source of [appSource, projectsSource]) {
+    assert.match(source, /PAGE_REFRESH_INTERVAL_MS = 1_000/);
+    assert.match(source, /window\.setInterval/);
+    assert.match(source, /window\.addEventListener\("focus"/);
+    assert.match(source, /document\.addEventListener\("visibilitychange"/);
+    assert.match(source, /refreshing/);
+  }
+
+  assert.match(appSource, /activePage !== "today"/);
+  assert.match(projectsSource, /setExpandedNodeIds\(\(current\)/);
+});

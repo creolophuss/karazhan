@@ -733,6 +733,8 @@ fn today_mutations_are_atomic_and_do_not_change_work_tree_fields() {
             "today_removed"
         ]
     );
+    assert!(db.recent_progress_events(PROJECT_ID, 3).unwrap().is_empty());
+    assert!(db.recent_progress_events(TASK_ID, 3).unwrap().is_empty());
 }
 
 #[test]
@@ -950,6 +952,7 @@ fn project_task_tree_projection_keeps_mixed_hierarchy_and_sibling_positions() {
     assert_eq!(projected[0].goal.as_deref(), Some("Goal"));
     assert_eq!(projected[0].acceptance.as_deref(), Some("Acceptance"));
     assert_eq!(projected[0].revision, 2);
+    assert!(!projected[0].has_steps);
     assert_eq!(projected[1].id, standalone_task_id);
     assert_eq!(projected[1].kind, "task");
     assert_eq!(projected[1].parent_id, SYSTEM_ROOT_ID);
@@ -1029,9 +1032,10 @@ fn progress_append_and_queries_do_not_change_current_fields() {
     assert_eq!(replay.revision, delivery.revision);
     assert_eq!(work_state(&db, TASK_ID), before);
 
-    let recent = db.recent_progress_events(TASK_ID, 1).unwrap();
-    assert_eq!(recent.len(), 1);
+    let recent = db.recent_progress_events(TASK_ID, 3).unwrap();
+    assert_eq!(recent.len(), 2);
     assert_eq!(recent[0].summary, "Ready for review");
+    assert_eq!(recent[1].summary, "Implemented query");
     let timeline = db.progress_timeline(TASK_ID).unwrap();
     assert_eq!(timeline.len(), 3);
     assert_eq!(timeline[0].event_type, "progress");

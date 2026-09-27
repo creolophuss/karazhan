@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 
 import ProjectsPage from "./components/ProjectsPage";
 import ArchivePage from "./components/ArchivePage";
@@ -37,6 +37,8 @@ type MembershipFeedback = {
 
 type StepMenuState = AddStepTarget & { x: number; y: number };
 
+const PAGE_REFRESH_INTERVAL_MS = 1_000;
+
 export default function App() {
   const [activePage, setActivePage] = useState<"today" | "projects" | "backlog" | "archive">("today");
   const [today, setToday] = useState<TodayState>({ status: "loading" });
@@ -58,28 +60,59 @@ export default function App() {
   const [stepTarget, setStepTarget] = useState<AddStepTarget | null>(null);
   const [quickItemOpen, setQuickItemOpen] = useState(false);
   const [stepsVersion, setStepsVersion] = useState(0);
+  const todayLoaded = useRef(false);
+  const todaySnapshot = useRef<string | null>(null);
+
+  const acceptRefreshedToday = useCallback((items: TodayItem[]) => {
+    const snapshot = JSON.stringify(items);
+    if (snapshot === todaySnapshot.current) return;
+    todaySnapshot.current = snapshot;
+    const firstLoad = !todayLoaded.current;
+    todayLoaded.current = true;
+    setToday({ status: "ready", items });
+    if (firstLoad) {
+      setExpandedNodeIds(allTodayNodeIds(items.filter(isTodayItemExpandable)));
+      return;
+    }
+    const currentIds = new Set(items.map((item) => item.node_id));
+    setExpandedNodeIds(
+      (current) => new Set([...current].filter((nodeId) => currentIds.has(nodeId))),
+    );
+  }, []);
 
   useEffect(() => {
+    if (activePage !== "today") return;
     let active = true;
-    loadToday().then(
-      (items) => {
-        if (active) {
-          setToday({ status: "ready", items });
-          setExpandedNodeIds(
-            allTodayNodeIds(items.filter(isTodayItemExpandable)),
-          );
-        }
-      },
-      (error: unknown) => {
-        if (active) {
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const items = await loadToday();
+        if (active) acceptRefreshedToday(items);
+      } catch (error) {
+        if (active && !todayLoaded.current) {
           setToday({ status: "error", message: describeClientError(error) });
         }
-      },
-    );
+      } finally {
+        refreshing = false;
+      }
+    };
+    const refreshOnFocus = () => { void refresh(); };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    void refresh();
+    const interval = window.setInterval(() => { void refresh(); }, PAGE_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
     return () => {
       active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
-  }, []);
+  }, [activePage, acceptRefreshedToday]);
 
   const expandableItems =
     today.status === "ready" ? today.items.filter(isTodayItemExpandable) : [];
@@ -89,14 +122,6 @@ export default function App() {
     expandableItems.every((item) => expandedNodeIds.has(item.node_id));
   const allRowsCollapsed = expandedNodeIds.size === 0;
   const membershipBusy = membershipFeedback.status === "saving";
-
-  function acceptRefreshedToday(items: TodayItem[]) {
-    setToday({ status: "ready", items });
-    const currentIds = new Set(items.map((item) => item.node_id));
-    setExpandedNodeIds(
-      (current) => new Set([...current].filter((nodeId) => currentIds.has(nodeId))),
-    );
-  }
 
   async function handleRemove(item: TodayItem) {
     setMembershipFeedback({ status: "saving", message: "Removing…" });

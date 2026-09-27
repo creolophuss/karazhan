@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 
 import {
   allExpandableNodeIds,
@@ -19,6 +19,7 @@ import AddStepModal, { type AddStepTarget } from "./AddStepModal.tsx";
 import TodayRecentSteps from "./TodayRecentSteps.tsx";
 
 const SYSTEM_ROOT_ID = "00000000-0000-0000-0000-000000000001";
+const PAGE_REFRESH_INTERVAL_MS = 1_000;
 
 type ProjectsState =
   | { status: "loading" }
@@ -115,28 +116,67 @@ export default function ProjectsPage({ onTodayChanged }: ProjectsPageProps) {
   const [archiveTarget, setArchiveTarget] = useState<ProjectTaskTreeNode | null>(null);
   const [stepTarget, setStepTarget] = useState<AddStepTarget | null>(null);
   const [stepsVersion, setStepsVersion] = useState(0);
+  const projectsLoaded = useRef(false);
+  const projectsSnapshot = useRef<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const [items, todayItems] = await Promise.all([loadProjectTaskTree(), loadToday()]);
+  const acceptLoadedState = useCallback((
+    items: Awaited<ReturnType<typeof loadProjectTaskTree>>,
+    todayItems: TodayItem[],
+    resetExpansion: boolean,
+  ) => {
+    const snapshot = JSON.stringify([items, todayItems]);
+    if (snapshot === projectsSnapshot.current) return;
+    projectsSnapshot.current = snapshot;
+    projectsLoaded.current = true;
     const roots = buildProjectTaskTree(items);
+    const expandableIds = allExpandableNodeIds(roots);
     setState({ status: "ready", roots, todayItems });
-    setExpandedNodeIds(allExpandableNodeIds(roots));
+    setExpandedNodeIds((current) => resetExpansion
+      ? expandableIds
+      : new Set([...current].filter((nodeId) => expandableIds.has(nodeId))));
     onTodayChanged(todayItems);
   }, [onTodayChanged]);
 
+  const refresh = useCallback(async () => {
+    const [items, todayItems] = await Promise.all([loadProjectTaskTree(), loadToday()]);
+    acceptLoadedState(items, todayItems, true);
+  }, [acceptLoadedState]);
+
   useEffect(() => {
     let active = true;
-    Promise.all([loadProjectTaskTree(), loadToday()]).then(
-      ([items, todayItems]) => {
-        if (!active) return;
-        const roots = buildProjectTaskTree(items);
-        setState({ status: "ready", roots, todayItems });
-        setExpandedNodeIds(allExpandableNodeIds(roots));
-      },
-      (error: unknown) => { if (active) setState({ status: "error", message: describeClientError(error) }); },
+    let refreshing = false;
+    const refreshVisiblePage = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const [items, todayItems] = await Promise.all([loadProjectTaskTree(), loadToday()]);
+        if (active) acceptLoadedState(items, todayItems, !projectsLoaded.current);
+      } catch (error) {
+        if (active && !projectsLoaded.current) {
+          setState({ status: "error", message: describeClientError(error) });
+        }
+      } finally {
+        refreshing = false;
+      }
+    };
+    const refreshOnFocus = () => { void refreshVisiblePage(); };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") void refreshVisiblePage();
+    };
+    void refreshVisiblePage();
+    const interval = window.setInterval(
+      () => { void refreshVisiblePage(); },
+      PAGE_REFRESH_INTERVAL_MS,
     );
-    return () => { active = false; };
-  }, []);
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [acceptLoadedState]);
 
   const todayMemberships = state.status === "ready" ? todayMembershipByNodeId(state.todayItems) : new Map();
   const todayNodeIds = new Set(todayMemberships.keys());
