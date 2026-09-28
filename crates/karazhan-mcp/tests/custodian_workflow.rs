@@ -285,6 +285,7 @@ fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
         event_id: "44000000-0000-0000-0000-000000000010".into(),
         event_kind: ProgressEventKind::Progress,
         summary: "Implemented the first workflow slice".into(),
+        details: Some("Verification: workflow command completed.".into()),
         step_status: None,
         expected_revision: 1,
         context: context("workflow:append-progress"),
@@ -350,12 +351,15 @@ fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
     let timeline = client.query(Query::ProgressTimeline {
         node_id: CHILD_TASK_ID.into(),
     });
-    assert!(
-        timeline["payload"]
-            .as_array()
-            .expect("progress timeline")
-            .iter()
-            .any(|event| event["summary"] == "Implemented the first workflow slice")
+    let action = timeline["payload"]
+        .as_array()
+        .expect("progress timeline")
+        .iter()
+        .find(|event| event["summary"] == "Implemented the first workflow slice")
+        .expect("action log event");
+    assert_eq!(
+        action["details"],
+        "Verification: workflow command completed."
     );
 
     client.finish();

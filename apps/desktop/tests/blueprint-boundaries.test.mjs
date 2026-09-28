@@ -139,6 +139,9 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   );
   assert.match(mcpWorkflows, /"type": "add_resource_binding"/);
   assert.match(mcpWorkflows, /"type": "update_resource_availability"/);
+  assert.match(mcpWorkflows, /"details": "<optional-verbose-action-details>"/);
+  assert.match(mcpWorkflows, /---/);
+  assert.match(mcpWorkflows, /summary.*details|details.*summary/is);
   assert.match(mcpWorkflows, /do not read, scan, upload, or copy|without asking Karazhan to read/i);
   assert.match(custodianInstructions, /user controls Custodian startup/);
   for (const document of [

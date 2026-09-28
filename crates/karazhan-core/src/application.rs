@@ -172,6 +172,8 @@ pub struct AppendProgressCommand {
     pub event_kind: ProgressEventKind,
     pub summary: String,
     #[serde(default)]
+    pub details: Option<String>,
+    #[serde(default)]
     pub step_status: Option<WorkStatus>,
     pub expected_revision: i64,
     pub context: CommandContext,
@@ -515,6 +517,7 @@ impl Application {
                     id: &command.event_id,
                     kind: command.event_kind,
                     summary: &command.summary,
+                    details: command.details.as_deref(),
                     step_status: command.step_status,
                 },
                 command.expected_revision,

@@ -15,6 +15,7 @@ const CORE_MIGRATION_2: &str = include_str!("../migrations/0002_resource_binding
 const CORE_MIGRATION_3: &str = include_str!("../migrations/0003_archive.sql");
 const CORE_MIGRATION_4: &str = include_str!("../migrations/0004_progress_step_status.sql");
 const CORE_MIGRATION_5: &str = include_str!("../migrations/0005_quick_items.sql");
+const CORE_MIGRATION_6: &str = include_str!("../migrations/0006_progress_details.sql");
 const IMPORT_RUN_NAMESPACE: &str = "74285973-cf02-5e66-9165-a636fb71d94e";
 
 pub mod application;
@@ -363,6 +364,7 @@ pub struct NewProgressEvent<'a> {
     pub id: &'a str,
     pub kind: ProgressEventKind,
     pub summary: &'a str,
+    pub details: Option<&'a str>,
     pub step_status: Option<WorkStatus>,
 }
 
@@ -482,6 +484,7 @@ pub struct ProgressEvent {
     pub recorded_at: String,
     pub event_type: String,
     pub summary: String,
+    pub details: Option<String>,
     pub step_status: Option<String>,
     pub blocker: Option<String>,
     pub actor_type: String,
@@ -780,6 +783,7 @@ impl Database {
             (3, CORE_MIGRATION_3),
             (4, CORE_MIGRATION_4),
             (5, CORE_MIGRATION_5),
+            (6, CORE_MIGRATION_6),
         ] {
             let applied = connection
                 .query_row(
@@ -1688,7 +1692,7 @@ impl Database {
     ) -> Result<Vec<ProgressEvent>, DomainError> {
         let mut statement = self.connection.prepare(
             "SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
-                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.summary, pe.details, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
                     pe.channel, n.title
              FROM progress_events pe
              JOIN work_nodes n ON n.id = pe.subject_node_id
@@ -1722,7 +1726,7 @@ impl Database {
                  )
              )
              SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
-                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.summary, pe.details, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
                     pe.channel, n.title
              FROM progress_events pe
              JOIN subtree ON subtree.id = pe.subject_node_id
@@ -1740,7 +1744,7 @@ impl Database {
     pub fn progress_timeline(&self, node_id: &str) -> Result<Vec<ProgressEvent>, DomainError> {
         let mut statement = self.connection.prepare(
             "SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
-                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.summary, pe.details, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
                     pe.channel, n.title
              FROM progress_events pe
              JOIN work_nodes n ON n.id = pe.subject_node_id
@@ -1770,7 +1774,7 @@ impl Database {
                  )
              )
              SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
-                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.summary, pe.details, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
                     pe.channel, n.title
              FROM progress_events pe
              JOIN subtree ON subtree.id = pe.subject_node_id
@@ -3238,6 +3242,7 @@ impl Database {
             event.id,
             event.kind.as_str(),
             event.summary,
+            event.details.unwrap_or(""),
             event.step_status.map_or("", WorkStatus::as_str),
             &expected_revision_text,
             metadata.actor_type.as_str(),
@@ -3262,18 +3267,19 @@ impl Database {
         tx.execute(
             "INSERT INTO progress_events (
                id, subject_node_id, occurred_at, recorded_at, event_type,
-               summary, step_status, actor_type, actor_ref, channel
+               summary, details, step_status, actor_type, actor_ref, channel
              ) VALUES (
                ?1, ?2,
                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
                strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-               ?3, ?4, ?5, ?6, ?7, ?8
+               ?3, ?4, ?5, ?6, ?7, ?8, ?9
              )",
             params![
                 event.id,
                 node_id,
                 event.kind.as_str(),
                 event.summary,
+                event.details,
                 event.step_status.map(WorkStatus::as_str),
                 metadata.actor_type.as_str(),
                 metadata.actor_ref,
@@ -3862,16 +3868,17 @@ fn progress_event_from_row(row: &Row<'_>) -> rusqlite::Result<ProgressEvent> {
     Ok(ProgressEvent {
         id: row.get(0)?,
         subject_node_id: row.get(1)?,
-        subject_title: row.get(11)?,
+        subject_title: row.get(12)?,
         occurred_at: row.get(2)?,
         recorded_at: row.get(3)?,
         event_type: row.get(4)?,
         summary: row.get(5)?,
-        step_status: row.get(6)?,
-        blocker: row.get(7)?,
-        actor_type: row.get(8)?,
-        actor_ref: row.get(9)?,
-        channel: row.get(10)?,
+        details: row.get(6)?,
+        step_status: row.get(7)?,
+        blocker: row.get(8)?,
+        actor_type: row.get(9)?,
+        actor_ref: row.get(10)?,
+        channel: row.get(11)?,
     })
 }
 

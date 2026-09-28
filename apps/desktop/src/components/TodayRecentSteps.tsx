@@ -42,7 +42,7 @@ export default function TodayRecentSteps({
 
   return (
     <section className="today-steps" aria-labelledby={`today-steps-${nodeId}`}>
-      <div className="steps-heading"><h3 id={`today-steps-${nodeId}`}>{showAll ? "All steps" : "Recent steps"}</h3>{state.status === "ready" && (showAll || state.events.length >= 3) && <button type="button" onClick={() => setShowAll((current) => !current)}>{showAll ? "Show recent" : "Show all steps"}</button>}</div>
+      <div className="steps-heading"><h3 id={`today-steps-${nodeId}`}>{showAll ? "Action log" : "Recent steps"}</h3>{state.status === "ready" && (showAll || state.events.length > 0) && <button type="button" onClick={() => setShowAll((current) => !current)}>{showAll ? "Show recent" : "View action log"}</button>}</div>
       {state.status === "loading" && <p className="today-steps-state">Loading…</p>}
       {state.status === "error" && (
         <p className="today-steps-state error" role="alert">{state.message}</p>
@@ -55,8 +55,9 @@ export default function TodayRecentSteps({
         {state.status === "ready" && state.events.map((event) => (
           <li className={event.step_status === "pending" ? "pending-step" : undefined} key={event.id}>
             {event.subject_node_id !== nodeId && <span className="step-source">{event.subject_title}</span>}
-            {event.summary}
+            <span className="step-summary">{event.summary}</span>
             {event.step_status && <span className={`step-status ${event.step_status.replaceAll("_", "-")}`}>{statusLabel(event.step_status)}</span>}
+            {showAll && event.details && <div className="action-log-details">{event.details}</div>}
           </li>
         ))}
       </ul>

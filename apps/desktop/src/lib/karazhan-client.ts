@@ -157,6 +157,7 @@ export interface AppendProgressCommand {
   event_id: string;
   event_kind: ProgressEventKind;
   summary: string;
+  details?: string | null;
   step_status: WorkStatus | null;
   expected_revision: number;
   context: CommandContext;
@@ -559,6 +560,7 @@ export interface ProgressEvent {
   recorded_at: string;
   event_type: string;
   summary: string;
+  details: string | null;
   step_status: WorkStatus | null;
   blocker: string | null;
   actor_type: ActorType;

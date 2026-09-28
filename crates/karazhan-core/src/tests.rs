@@ -1028,6 +1028,7 @@ fn progress_append_and_queries_do_not_change_current_fields() {
             id: "44000000-0000-0000-0000-000000000002",
             kind: ProgressEventKind::Progress,
             summary: "Implemented query",
+            details: Some("Changed the query planner.\n\nVerification: focused tests passed."),
             step_status: Some(WorkStatus::Pending),
         },
         2,
@@ -1041,6 +1042,7 @@ fn progress_append_and_queries_do_not_change_current_fields() {
                 id: "44000000-0000-0000-0000-000000000003",
                 kind: ProgressEventKind::Delivery,
                 summary: "Ready for review",
+                details: None,
                 step_status: None,
             },
             2,
@@ -1054,6 +1056,7 @@ fn progress_append_and_queries_do_not_change_current_fields() {
                 id: "44000000-0000-0000-0000-000000000003",
                 kind: ProgressEventKind::Delivery,
                 summary: "Ready for review",
+                details: None,
                 step_status: None,
             },
             2,
@@ -1064,14 +1067,36 @@ fn progress_append_and_queries_do_not_change_current_fields() {
     assert_eq!(replay.revision, delivery.revision);
     assert_eq!(work_state(&db, TASK_ID), before);
 
+    let changed_details = db.append_progress_event(
+        TASK_ID,
+        NewProgressEvent {
+            id: "44000000-0000-0000-0000-000000000003",
+            kind: ProgressEventKind::Delivery,
+            summary: "Ready for review",
+            details: Some("Different verbose details"),
+            step_status: None,
+        },
+        2,
+        metadata("append-delivery"),
+    );
+    assert!(matches!(
+        changed_details,
+        Err(DomainError::IdempotencyConflict)
+    ));
+
     let recent = db.recent_progress_events(TASK_ID, 3).unwrap();
     assert_eq!(recent.len(), 2);
     assert_eq!(recent[0].summary, "Ready for review");
     assert_eq!(recent[1].summary, "Implemented query");
+    assert_eq!(
+        recent[1].details.as_deref(),
+        Some("Changed the query planner.\n\nVerification: focused tests passed.")
+    );
     let timeline = db.progress_timeline(TASK_ID).unwrap();
     assert_eq!(timeline.len(), 3);
     assert_eq!(timeline[0].event_type, "progress");
     assert_eq!(timeline[1].summary, "Implemented query");
+    assert_eq!(timeline[1].details, recent[1].details);
     assert_eq!(timeline[1].step_status.as_deref(), Some("pending"));
     assert_eq!(timeline[2].event_type, "delivery");
     assert_eq!(timeline[2].step_status, None);
@@ -1091,6 +1116,7 @@ fn progress_append_and_queries_do_not_change_current_fields() {
             id: "44000000-0000-0000-0000-000000000004",
             kind: ProgressEventKind::Progress,
             summary: "Stale progress",
+            details: None,
             step_status: Some(WorkStatus::Ready),
         },
         1,
@@ -1144,6 +1170,7 @@ fn today_project_steps_include_descendant_progress_with_source() {
             id: "44000000-0000-0000-0000-000000000011",
             kind: ProgressEventKind::Progress,
             summary: "Child project progress",
+            details: None,
             step_status: None,
         },
         1,
@@ -1156,6 +1183,7 @@ fn today_project_steps_include_descendant_progress_with_source() {
             id: "44000000-0000-0000-0000-000000000012",
             kind: ProgressEventKind::Delivery,
             summary: "Child task delivery",
+            details: None,
             step_status: None,
         },
         1,
@@ -1291,6 +1319,7 @@ fn file_database_preserves_nodes_today_and_events_after_reopen() {
                 id: "44000000-0000-0000-0000-000000000005",
                 kind: ProgressEventKind::Progress,
                 summary: "Waiting for approval",
+                details: None,
                 step_status: Some(WorkStatus::Pending),
             },
             2,
@@ -1466,6 +1495,19 @@ fn pending_migration_checkpoints_wal_and_creates_verified_online_backup() {
             [PROJECT_ID],
         )
         .unwrap();
+    connection
+        .execute(
+            "INSERT INTO progress_events (
+               id, subject_node_id, occurred_at, recorded_at, event_type,
+               summary, actor_type, channel
+             ) VALUES (
+               '44000000-0000-0000-0000-000000000099', ?1,
+               '2026-09-21T00:00:00Z', '2026-09-21T00:00:00Z',
+               'progress', 'Legacy summary only', 'user', 'ui'
+             )",
+            [PROJECT_ID],
+        )
+        .unwrap();
     drop(connection);
 
     let db = Database::open(&path).unwrap();
@@ -1473,8 +1515,11 @@ fn pending_migration_checkpoints_wal_and_creates_verified_online_backup() {
         db.connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
+    let migrated = db.recent_progress_events(PROJECT_ID, 1).unwrap();
+    assert_eq!(migrated[0].summary, "Legacy summary only");
+    assert_eq!(migrated[0].details, None);
     drop(db);
 
     let backups: Vec<_> = std::fs::read_dir(directory.path())
@@ -1656,7 +1701,7 @@ fn formal_schema_v1_contains_all_tables_indexes_and_guards() {
         db.connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
     assert_eq!(
         db.connection
@@ -1664,7 +1709,7 @@ fn formal_schema_v1_contains_all_tables_indexes_and_guards() {
                 row.get::<_, i64>(0)
             })
             .unwrap(),
-        5
+        6
     );
     let tables = schema_objects(&db.connection, "table");
     assert_eq!(

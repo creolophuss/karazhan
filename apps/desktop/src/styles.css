@@ -665,6 +665,15 @@ h1 {
   color: #95534b;
 }
 
+.action-log-details {
+  margin-top: 0.4rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid #ded5c7;
+  color: #6f675d;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .context-path,
 .resource-list code {
   display: block;

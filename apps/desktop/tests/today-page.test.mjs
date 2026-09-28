@@ -224,10 +224,14 @@ test("Recent steps colors status labels and pending step text", async () => {
   assert.match(source, /event\.step_status/);
   assert.match(source, /step-status/);
   assert.match(source, /pending-step/);
-  assert.match(source, /Show all steps/);
+  assert.match(source, /View action log/);
   assert.match(source, /Show recent/);
   assert.match(source, /event\.subject_node_id !== nodeId/);
   assert.match(source, /step-source/);
+  assert.match(source, /showAll && event\.details/);
+  assert.match(source, /action-log-details/);
+  assert.match(source, /showAll \? "Action log" : "Recent steps"/);
+  assert.match(source, /showAll \? "Show recent" : "View action log"/);
   for (const status of ["planned", "ready", "in-progress", "pending", "review", "done", "cancelled"]) {
     assert.match(styles, new RegExp(`\\.step-status\\.${status}`));
   }

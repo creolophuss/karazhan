@@ -258,6 +258,7 @@ export async function appendManualStep(
       event_id: operationId,
       event_kind: "progress",
       summary: summary.trim(),
+      details: null,
       step_status: stepStatus,
       expected_revision: expectedRevision,
       context,

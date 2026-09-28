@@ -160,11 +160,11 @@ ProgressEvent 记录“发生了什么”，只关联 Project 或 Task，不属�
 - Today 的加入、移除与重排；
 - 从 legacy 日志导入的事件。
 
-事件保存发生时间、记录时间、摘要、证据、actor、写入渠道和可选来源绑定。当前字段变化与相应事件必须在同一业务事务中保持一致。
+事件保存发生时间、记录时间、短概要、可选 verbose 详情、证据、actor、写入渠道和可选来源绑定。Action log 以概要和详情两个独立字段表达；旧事件和旧客户端不提供详情时保持兼容。当前字段变化与相应事件必须在同一业务事务中保持一致。
 
 ProgressEvent 不反向充当当前状态。日志同步产生事件后，status 等字段仍须由明确的用户、API 或 MCP 命令修改。
 
-用户也可以为 Project / Task 手工追加带状态的 Step。Step 使用 ProgressEvent 表达，不是新的 Work Tree 节点，也不改变所属 Project / Task 的当前状态或 revision。手工 Step 可使用与工作状态一致的状态文案；UI 默认显示最近 3 条，并允许切换完整列表。
+用户也可以为 Project / Task 手工追加带状态的 Step。Step 使用 ProgressEvent 表达，不是新的 Work Tree 节点，也不改变所属 Project / Task 的当前状态或 revision。手工 Step 可使用与工作状态一致的状态文案；UI 默认显示最近 3 条概要，并允许切换完整 Action log，只有完整 Action log 展示 verbose 详情。
 
 ## 5. 状态与生命周期
 
@@ -267,7 +267,7 @@ Today 是一个 Project / Task 混合列表，必须支持：
 
 Quick item 也不是新领域类型，而是带 `is_quick_item` 标记的普通 Task；用户输入的 Description 存入其必填标题字段。创建必须原子加入 Today，checkbox 继续使用带 revision 检查的 Task 状态命令，删除使用带幂等、actor/channel 与事务语义的专用命令。Projects & Tasks 投影必须排除 Quick item。
 
-Today 展开区显示最近 3 条有业务意义的 Steps / Progress，并可切换 Show all / Show recent；Project、Task 和直接 Child Task 均可通过右键 Add step。Today membership/order、Parent 变更、普通字段保存等结构化审计事件继续保留在完整 timeline，但不进入 Recent / All steps、不占用最近 3 条名额，也不单独使条目出现 disclosure。Today 底部继续显示全局 Recent Progress。Today 首屏读取产品数据库，不等待 Workspace 检查或日志同步完成。
+Today 展开区显示最近 3 条有业务意义的 Steps / Progress 概要，并可切换 Action log / Recent steps；Action log 同时显示概要和可选 verbose 详情。Project、Task 和直接 Child Task 均可通过右键 Add step。Today membership/order、Parent 变更、普通字段保存等结构化审计事件继续保留在完整 timeline，但不进入 Recent / Action log、不占用最近 3 条名额，也不单独使条目出现 disclosure。Today 底部继续显示全局 Recent Progress。Today 首屏读取产品数据库，不等待 Workspace 检查或日志同步完成。
 
 当前可见的 Today 与 Projects & Tasks 页面必须及时反映 HTTP / MCP 等外部进程的写入：可见期间至多约 1 秒刷新一次，窗口重新聚焦或页面恢复可见时立即刷新。后台刷新不得重置用户的展开/折叠状态，不得并发发起重叠查询，相同数据不得触发无意义的页面重渲染。
 
@@ -286,7 +286,7 @@ Projects & Tasks 是同一全局 Work Tree 的 Project / Task 投影；系统 Ro
 - 直接编辑 status 和 priority；
 - 顶层圆形 `+` 创建 Project / Task；Project 右键创建 Child Project / Task，Task 右键创建 Child Task；创建表单包含 Name、Description，Project 另含可选本地 Path；
 - Project / Task 右键提供 Add step 和 Archive，不提供直接永久删除；
-- 展开内容使用一个统一详情卡片：Recent steps 在上、未单独进入 Today 的递归 Child Project / Task 在下；某个 Child 自己进入 Today 后，它与其子树不再在 Parent 卡片重复；Project 的 Steps 聚合仍归属该卡片的自身与后代业务事件并标明后代来源；Steps 默认最近 3 条并可切换完整列表；
+- 展开内容使用一个统一详情卡片：Recent steps 在上、未单独进入 Today 的递归 Child Project / Task 在下；某个 Child 自己进入 Today 后，它与其子树不再在 Parent 卡片重复；Project 的 Steps 聚合仍归属该卡片的自身与后代业务事件并标明后代来源；Recent steps 默认显示最近 3 条概要，并可切换展示概要与详情的完整 Action log；
 - 底层继续保留 goal、acceptance、blocker、Context、ResourceBinding 和完整事件能力，但本页不要求展示大型 Details 面板，也不读取 Context 正文。
 
 Task 的详细区域默认折叠；存在 Child 或 Step 的节点显示 disclosure。Child Task 直接出现在树中，不再另建 To-do 区块，也不在详情中复制同一 Child。
@@ -685,7 +685,8 @@ SQLite 必须直接或通过领域事务保证：
 32. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
 33. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
 34. Medivh Profile 安装后可发现窄权限 Karazhan Skill，并通过已配置的 `karazhan-mcp` 对持久化且已验证的顶层 Workspace 执行幂等 Project 创建/查询和 primary Workspace binding 登记/查询；还可以按用户明确请求，在 Root 或用户明确指定且经查询确认的 Project / Task 下幂等新增、查询 Backlog。写入保留 `medivh` actor provenance，现有不同 MCP 配置不被静默覆盖，且 Medivh 仍不能管理 Child、Today、progress、业务字段、状态、既有 Backlog 编辑/移动/Discard/Promote 或 Custodian session。
-35. Today 中的 Project 展开后显示未单独进入 Today 的递归 Child Project / Task；独立 Today Child 及其子树不在 Parent 卡片重复。Parent Recent / All steps 聚合该可见子树的业务事件、排除审计事件，并为后代事件标明来源。
+35. Today 中的 Project 展开后显示未单独进入 Today 的递归 Child Project / Task；独立 Today Child 及其子树不在 Parent 卡片重复。Parent Recent steps / Action log 聚合该可见子树的业务事件、排除审计事件，并为后代事件标明来源。
+36. Action log 写入使用短概要和可选 verbose 详情两个独立字段；旧概要-only 事件继续可读，幂等摘要包含详情。Recent steps 等紧凑投影只显示概要，切换到完整 Action log 后才显示详情。
 
 ## 16. 定稿确认
 

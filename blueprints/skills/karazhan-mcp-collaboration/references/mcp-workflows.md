@@ -122,7 +122,17 @@ A Parent Custodian creates a Child Task with the Child's already-persisted local
 
 Use `create_project` instead when the Child is a Project. Use its Parent Project/Task ID as `parent_id`; Karazhan enforces the legal parent matrix. Positions are sibling-local and must be chosen from a current Parent query rather than assumed when siblings already exist.
 
-After durable progress is appended locally, query the current node revision and submit:
+After durable progress is appended locally, write each Action log entry in two parts when verbose evidence is useful:
+
+```text
+<one-line summary>
+---
+<verbose details, evidence, verification, unresolved facts, and next action>
+```
+
+The `---` line is an authoring delimiter, not stored content. Map the text before it to `summary` and the text after it to `details`. Keep `summary` short enough for Recent steps. Omit the delimiter and send `details: null` when the summary is sufficient. Never put credentials or raw sensitive Context in either field.
+
+Then query the current node revision and submit:
 
 ```json
 {
@@ -133,6 +143,7 @@ After durable progress is appended locally, query the current node revision and 
       "event_id": "<stable-event-uuid>",
       "event_kind": "progress",
       "summary": "<durable-fact-summary>",
+      "details": "<optional-verbose-action-details>",
       "step_status": null,
       "expected_revision": 3,
       "context": {

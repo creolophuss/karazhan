@@ -22,7 +22,7 @@ A top-level Project Custodian starts from a provisioned Workspace whose `.workbe
 Read [references/mcp-workflows.md](references/mcp-workflows.md) before writing. A Custodian may:
 
 - query its Project/Task, current revision, Children, Today membership, and progress;
-- append its own durable progress and evidence;
+- append its own durable Action log entry with a concise summary and optional verbose details;
 - explicitly update supported current fields;
 - create a Child Project or Child Task with a pre-generated stable local ID;
 - register and query ResourceBindings for its own Project/Task, and update binding availability;
@@ -31,6 +31,8 @@ Read [references/mcp-workflows.md](references/mcp-workflows.md) before writing. 
 Do not create or manage Custodian sessions. Creating a Karazhan node does not create a Custodian.
 
 ResourceBinding writes register locators only; they do not read, scan, upload, or copy the referenced resource. Binding identity (`id`, node, kind, locator) is immutable after creation. Use an availability update to record `available`, `missing`, `unreadable`, or `unknown`, and query the binding after each write.
+
+For Action log authoring and MCP field mapping, follow the summary/details convention in the workflow reference. Recent-step projections intentionally show only the summary.
 
 ## Safety
 
