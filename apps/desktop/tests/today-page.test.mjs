@@ -5,7 +5,8 @@ import test from "node:test";
 import {
   checkboxStatus,
   describeClientError,
-  directChildTaskRows,
+  childItemPath,
+  childItemRows,
   isBusinessStep,
   isTodayItemExpandable,
   loadRecentSteps,
@@ -23,7 +24,7 @@ test("Today reads the persisted membership order with one shared query", async (
       title: "Karazhan",
       position: 4,
       revision: 3,
-      direct_child_tasks: [],
+      child_items: [],
     },
     {
       node_id: "task-1",
@@ -31,7 +32,7 @@ test("Today reads the persisted membership order with one shared query", async (
       title: "Ship the desktop shell",
       position: 9,
       revision: 2,
-      direct_child_tasks: [],
+      child_items: [],
     },
   ];
   const client = {
@@ -64,17 +65,19 @@ test("Today presents structured failures without discarding their code", () => {
   assert.equal(describeClientError("unknown"), "Unable to load Today.");
 });
 
-test("expanded rows present only the ordered Child Tasks supplied by shared core", () => {
+test("expanded rows present recursive Project and Task children supplied by shared core", () => {
   const parent = {
     node_id: "project-1",
     kind: "project",
     title: "Karazhan",
+    path_titles: ["Karazhan"],
     position: 0,
     revision: 1,
-    direct_child_tasks: [
+    child_items: [
       {
         id: "task-visible",
         parent_id: "project-1",
+        kind: "task",
         key: "visible",
         title: "Visible direct task",
         summary: null,
@@ -89,9 +92,11 @@ test("expanded rows present only the ordered Child Tasks supplied by shared core
     ],
   };
 
-  assert.deepEqual(directChildTaskRows(parent), [
+  assert.deepEqual(childItemRows(parent), [
     {
       id: "task-visible",
+      parent_id: "project-1",
+      kind: "task",
       title: "Visible direct task",
       summary: null,
       revision: 2,
@@ -101,6 +106,7 @@ test("expanded rows present only the ordered Child Tasks supplied by shared core
       has_steps: true,
     },
   ]);
+  assert.equal(childItemPath(parent, parent.child_items[0]), "Karazhan › Visible direct task");
 });
 
 test("Today displays the shared Work Tree path and expands only containers", () => {
@@ -108,7 +114,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     node_id: "project-1",
     kind: "project",
     path_titles: ["Karazhan"],
-    direct_child_tasks: [],
+    child_items: [],
     has_steps: false,
     is_quick_item: false,
   };
@@ -116,7 +122,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     node_id: "task-1",
     kind: "task",
     path_titles: ["Karazhan", "Desktop", "Polish Today"],
-    direct_child_tasks: [{ id: "child-1" }],
+    child_items: [{ id: "child-1" }],
     has_steps: false,
     is_quick_item: false,
   };
@@ -124,7 +130,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     node_id: "task-2",
     kind: "task",
     path_titles: ["Karazhan", "Ship build"],
-    direct_child_tasks: [],
+    child_items: [],
     has_steps: false,
     is_quick_item: false,
   };
@@ -132,7 +138,7 @@ test("Today displays the shared Work Tree path and expands only containers", () 
     node_id: "quick-1",
     kind: "task",
     path_titles: ["Call supplier"],
-    direct_child_tasks: [],
+    child_items: [],
     has_steps: true,
     is_quick_item: true,
   };
@@ -162,6 +168,23 @@ test("Recent steps uses the shared recent-progress query", async () => {
   assert.deepEqual(await loadRecentSteps(client, "project-1"), payload);
   assert.deepEqual(calls, [
     { type: "recent_progress", node_id: "project-1", limit: 3 },
+  ]);
+});
+
+test("Today Project steps request recursive descendant progress", async () => {
+  const calls = [];
+  const client = {
+    async query(query) {
+      calls.push(query);
+      return { type: "progress_events", payload: [] };
+    },
+  };
+
+  await loadRecentSteps(client, "project-1", true);
+  await loadAllSteps(client, "project-1", true);
+  assert.deepEqual(calls, [
+    { type: "recent_subtree_progress", node_id: "project-1", limit: 3 },
+    { type: "subtree_progress_timeline", node_id: "project-1" },
   ]);
 });
 
@@ -203,6 +226,8 @@ test("Recent steps colors status labels and pending step text", async () => {
   assert.match(source, /pending-step/);
   assert.match(source, /Show all steps/);
   assert.match(source, /Show recent/);
+  assert.match(source, /event\.subject_node_id !== nodeId/);
+  assert.match(source, /step-source/);
   for (const status of ["planned", "ready", "in-progress", "pending", "review", "done", "cancelled"]) {
     assert.match(styles, new RegExp(`\\.step-status\\.${status}`));
   }

@@ -12,6 +12,7 @@ interface TodayRecentStepsProps {
   nodeId: string;
   blocker: string | null;
   enabled: boolean;
+  includeDescendants?: boolean;
   refreshToken?: number;
 }
 
@@ -23,6 +24,7 @@ export default function TodayRecentSteps({
   nodeId,
   blocker,
   enabled,
+  includeDescendants = false,
   refreshToken = 0,
 }: TodayRecentStepsProps) {
   const [state, setState] = useState<StepsState>({ status: "idle" });
@@ -32,11 +34,11 @@ export default function TodayRecentSteps({
     if (!enabled) return;
     setState({ status: "loading" });
     const load = showAll ? loadAllSteps : loadRecentSteps;
-    load(karazhanClient, nodeId).then(
+    load(karazhanClient, nodeId, includeDescendants).then(
       (events) => setState({ status: "ready", events }),
       (error: unknown) => setState({ status: "error", message: describeClientError(error) }),
     );
-  }, [enabled, nodeId, refreshToken, showAll]);
+  }, [enabled, includeDescendants, nodeId, refreshToken, showAll]);
 
   return (
     <section className="today-steps" aria-labelledby={`today-steps-${nodeId}`}>
@@ -52,6 +54,7 @@ export default function TodayRecentSteps({
         {blocker && <li className="blocker-step">Blocked: {blocker}</li>}
         {state.status === "ready" && state.events.map((event) => (
           <li className={event.step_status === "pending" ? "pending-step" : undefined} key={event.id}>
+            {event.subject_node_id !== nodeId && <span className="step-source">{event.subject_title}</span>}
             {event.summary}
             {event.step_status && <span className={`step-status ${event.step_status.replaceAll("_", "-")}`}>{statusLabel(event.step_status)}</span>}
           </li>

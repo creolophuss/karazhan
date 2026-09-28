@@ -4,7 +4,7 @@ import {
   type MutationCommand,
   type Priority,
   type ProgressEvent,
-  type Task,
+  type ProjectTaskItem,
   type TextUpdate,
   type TodayItem,
   type WorkStatus,
@@ -214,28 +214,43 @@ export async function saveWorkItemFields(
   }
 }
 
-export interface DirectChildTaskRow {
+export interface TodayChildRow {
   id: string;
+  parent_id: string;
+  kind: ProjectTaskItem["kind"];
   title: string;
   summary: string | null;
   revision: number;
-  status: Task["status"];
-  priority: Task["priority"];
+  status: ProjectTaskItem["status"];
+  priority: ProjectTaskItem["priority"];
   blocker: string | null;
   has_steps: boolean;
 }
 
-export function directChildTaskRows(item: TodayItem): DirectChildTaskRow[] {
-  return item.direct_child_tasks.map((task) => ({
-    id: task.id,
-    title: task.title,
-    summary: task.summary,
-    revision: task.revision,
-    status: task.status,
-    priority: task.priority,
-    blocker: task.blocker,
-    has_steps: task.has_steps,
+export function childItemRows(item: TodayItem): TodayChildRow[] {
+  return item.child_items.map((child) => ({
+    id: child.id,
+    parent_id: child.parent_id,
+    kind: child.kind,
+    title: child.title,
+    summary: child.summary,
+    revision: child.revision,
+    status: child.status,
+    priority: child.priority,
+    blocker: child.blocker,
+    has_steps: child.has_steps,
   }));
+}
+
+export function childItemPath(item: TodayItem, child: TodayChildRow): string {
+  const childrenById = new Map(item.child_items.map((candidate) => [candidate.id, candidate]));
+  const childTitles = [child.title];
+  let parent = childrenById.get(child.parent_id);
+  while (parent) {
+    childTitles.unshift(parent.title);
+    parent = childrenById.get(parent.parent_id);
+  }
+  return [...item.path_titles, ...childTitles].join(" › ");
 }
 
 export function todayPath(item: Pick<TodayItem, "path_titles">): string {
@@ -243,11 +258,11 @@ export function todayPath(item: Pick<TodayItem, "path_titles">): string {
 }
 
 export function isTodayItemExpandable(
-  item: Pick<TodayItem, "kind" | "direct_child_tasks" | "has_steps" | "is_quick_item">,
+  item: Pick<TodayItem, "kind" | "child_items" | "has_steps" | "is_quick_item">,
 ): boolean {
   return (
     !item.is_quick_item &&
-    (item.kind === "project" || item.direct_child_tasks.length > 0 || item.has_steps)
+    (item.kind === "project" || item.child_items.length > 0 || item.has_steps)
   );
 }
 
@@ -265,9 +280,10 @@ export function isBusinessStep(event: Pick<ProgressEvent, "event_type" | "summar
 export async function loadRecentSteps(
   client: TodayReader,
   nodeId: string,
+  includeDescendants = false,
 ): Promise<ProgressEvent[]> {
   const result = await client.query({
-    type: "recent_progress",
+    type: includeDescendants ? "recent_subtree_progress" : "recent_progress",
     node_id: nodeId,
     limit: 3,
   });
@@ -280,8 +296,12 @@ export async function loadRecentSteps(
 export async function loadAllSteps(
   client: TodayReader,
   nodeId: string,
+  includeDescendants = false,
 ): Promise<ProgressEvent[]> {
-  const result = await client.query({ type: "progress_timeline", node_id: nodeId });
+  const result = await client.query({
+    type: includeDescendants ? "subtree_progress_timeline" : "progress_timeline",
+    node_id: nodeId,
+  });
   if (result.type !== "progress_events") {
     throw new Error(`expected progress_events query result, received ${result.type}`);
   }

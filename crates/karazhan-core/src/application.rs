@@ -330,7 +330,14 @@ pub enum Query {
         node_id: String,
         limit: usize,
     },
+    RecentSubtreeProgress {
+        node_id: String,
+        limit: usize,
+    },
     ProgressTimeline {
+        node_id: String,
+    },
+    SubtreeProgressTimeline {
         node_id: String,
     },
     ProjectContextPath {
@@ -655,8 +662,15 @@ impl Application {
             Query::RecentProgress { node_id, limit } => Ok(QueryResult::ProgressEvents(
                 self.database.recent_progress_events(&node_id, limit)?,
             )),
+            Query::RecentSubtreeProgress { node_id, limit } => Ok(QueryResult::ProgressEvents(
+                self.database
+                    .recent_subtree_progress_events(&node_id, limit)?,
+            )),
             Query::ProgressTimeline { node_id } => Ok(QueryResult::ProgressEvents(
                 self.database.progress_timeline(&node_id)?,
+            )),
+            Query::SubtreeProgressTimeline { node_id } => Ok(QueryResult::ProgressEvents(
+                self.database.subtree_progress_timeline(&node_id)?,
             )),
             Query::ProjectContextPath { node_id } => Ok(QueryResult::ContextPath(
                 self.database.project_context_path(&node_id)?,

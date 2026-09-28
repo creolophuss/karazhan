@@ -179,7 +179,7 @@ test("Today uses compact breadcrumb names, Task descriptions, and a fixed sideba
   assert.doesNotMatch(app, /Your working set|Projects and tasks you chose|Today order saved\./);
   assert.match(app, /item\.kind === "task" && item\.summary/);
   assert.match(app, /className="today-description"/);
-  assert.match(app, /\{todayPath\(item\)\} › \{child\.title\}/);
+  assert.match(app, /\{childItemPath\(item, child\)\}/);
   assert.match(styles, /\.workspace\s*\{[\s\S]*?padding:\s*1\.75rem/);
   assert.match(styles, /body\s*\{[\s\S]*?overflow:\s*hidden/);
   assert.match(styles, /\.app-frame\s*\{[\s\S]*?height:\s*100%[\s\S]*?overflow:\s*hidden/);

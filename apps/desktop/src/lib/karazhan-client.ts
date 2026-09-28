@@ -295,7 +295,9 @@ export type Query =
   | { type: "list_backlog"; filter: BacklogFilter }
   | { type: "list_today" }
   | { type: "recent_progress"; node_id: string; limit: number }
+  | { type: "recent_subtree_progress"; node_id: string; limit: number }
   | { type: "progress_timeline"; node_id: string }
+  | { type: "subtree_progress_timeline"; node_id: string }
   | { type: "project_context_path"; node_id: string }
   | { type: "list_resource_bindings"; node_id: string }
   | { type: "legacy_dry_run"; source_root: string; scope: LegacyDryRunScope };
@@ -511,7 +513,7 @@ export interface TodayItem {
   blocker: string | null;
   has_steps: boolean;
   has_available_workspace: boolean;
-  direct_child_tasks: Task[];
+  child_items: ProjectTaskItem[];
   is_quick_item: boolean;
 }
 
@@ -552,6 +554,7 @@ export interface BacklogItem {
 export interface ProgressEvent {
   id: string;
   subject_node_id: string;
+  subject_title: string;
   occurred_at: string;
   recorded_at: string;
   event_type: string;

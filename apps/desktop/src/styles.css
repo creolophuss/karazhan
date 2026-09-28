@@ -1189,6 +1189,12 @@ h1 {
   color: #b4493f;
 }
 
+.today-steps .step-source {
+  margin-right: 0.45rem;
+  color: #6f665b;
+  font-weight: 650;
+}
+
 .step-status {
   margin-left: 0.45rem;
   font-size: 0.68rem;

@@ -286,7 +286,7 @@ Projects & Tasks 是同一全局 Work Tree 的 Project / Task 投影；系统 Ro
 - 直接编辑 status 和 priority；
 - 顶层圆形 `+` 创建 Project / Task；Project 右键创建 Child Project / Task，Task 右键创建 Child Task；创建表单包含 Name、Description，Project 另含可选本地 Path；
 - Project / Task 右键提供 Add step 和 Archive，不提供直接永久删除；
-- 展开内容使用一个统一详情卡片：Recent steps 在上、递归 Child Project / Task 在下；Steps 默认最近 3 条并可切换完整列表；
+- 展开内容使用一个统一详情卡片：Recent steps 在上、未单独进入 Today 的递归 Child Project / Task 在下；某个 Child 自己进入 Today 后，它与其子树不再在 Parent 卡片重复；Project 的 Steps 聚合仍归属该卡片的自身与后代业务事件并标明后代来源；Steps 默认最近 3 条并可切换完整列表；
 - 底层继续保留 goal、acceptance、blocker、Context、ResourceBinding 和完整事件能力，但本页不要求展示大型 Details 面板，也不读取 Context 正文。
 
 Task 的详细区域默认折叠；存在 Child 或 Step 的节点显示 disclosure。Child Task 直接出现在树中，不再另建 To-do 区块，也不在详情中复制同一 Child。
@@ -685,6 +685,7 @@ SQLite 必须直接或通过领域事务保证：
 32. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
 33. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
 34. Medivh Profile 安装后可发现窄权限 Karazhan Skill，并通过已配置的 `karazhan-mcp` 对持久化且已验证的顶层 Workspace 执行幂等 Project 创建/查询和 primary Workspace binding 登记/查询；还可以按用户明确请求，在 Root 或用户明确指定且经查询确认的 Project / Task 下幂等新增、查询 Backlog。写入保留 `medivh` actor provenance，现有不同 MCP 配置不被静默覆盖，且 Medivh 仍不能管理 Child、Today、progress、业务字段、状态、既有 Backlog 编辑/移动/Discard/Promote 或 Custodian session。
+35. Today 中的 Project 展开后显示未单独进入 Today 的递归 Child Project / Task；独立 Today Child 及其子树不在 Parent 卡片重复。Parent Recent / All steps 聚合该可见子树的业务事件、排除审计事件，并为后代事件标明来源。
 
 ## 16. 定稿确认
 

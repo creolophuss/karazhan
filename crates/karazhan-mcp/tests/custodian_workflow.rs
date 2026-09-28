@@ -345,7 +345,7 @@ fn custodian_can_drive_the_required_workflow_through_formal_mcp() {
     let today_items = today["payload"].as_array().expect("Today items");
     assert_eq!(today_items.len(), 1);
     assert_eq!(today_items[0]["node_id"], PARENT_TASK_ID);
-    assert_eq!(today_items[0]["direct_child_tasks"][0]["id"], CHILD_TASK_ID);
+    assert_eq!(today_items[0]["child_items"][0]["id"], CHILD_TASK_ID);
 
     let timeline = client.query(Query::ProgressTimeline {
         node_id: CHILD_TASK_ID.into(),

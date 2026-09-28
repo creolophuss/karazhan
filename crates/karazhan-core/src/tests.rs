@@ -294,7 +294,7 @@ fn archive_reopen_and_permanent_delete_are_recursive_and_atomic() {
     let today = db.list_today().unwrap();
     assert_eq!(today.len(), 1);
     assert_eq!(today[0].node_id, PROJECT_ID);
-    assert!(today[0].direct_child_tasks.is_empty());
+    assert!(today[0].child_items.is_empty());
     assert_eq!(db.progress_event_count(TASK_ID).unwrap(), 1);
 
     let child_of_archived = create(
@@ -750,10 +750,12 @@ fn today_mutations_are_atomic_and_do_not_change_work_tree_fields() {
 }
 
 #[test]
-fn today_projection_shows_only_direct_non_member_child_tasks() {
+fn today_projection_shows_recursive_non_member_child_projects_and_tasks() {
     let mut db = Database::open_in_memory().unwrap();
     let second_task_id = "20000000-0000-0000-0000-000000000003";
     let grandchild_id = "20000000-0000-0000-0000-000000000004";
+    let today_child_grandchild_id = "20000000-0000-0000-0000-000000000005";
+    let nested_project_id = "10000000-0000-0000-0000-000000000002";
     create(
         &mut db,
         node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "project", 0),
@@ -783,7 +785,18 @@ fn today_projection_shows_only_direct_non_member_child_tasks() {
     create(
         &mut db,
         node(
-            "10000000-0000-0000-0000-000000000002",
+            today_child_grandchild_id,
+            NodeKind::Task,
+            TASK_ID,
+            "today-child-grandchild",
+            0,
+        ),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            nested_project_id,
             NodeKind::Project,
             PROJECT_ID,
             "nested-project",
@@ -863,13 +876,20 @@ fn today_projection_shows_only_direct_non_member_child_tasks() {
     assert!(!projected[1].has_available_workspace);
     assert_eq!(
         projected[0]
-            .direct_child_tasks
+            .child_items
             .iter()
-            .map(|task| task.id.as_str())
+            .map(|child| child.id.as_str())
             .collect::<Vec<_>>(),
-        vec![second_task_id]
+        vec![second_task_id, grandchild_id, nested_project_id]
     );
-    assert!(projected[1].direct_child_tasks.is_empty());
+    assert_eq!(
+        projected[1]
+            .child_items
+            .iter()
+            .map(|child| child.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![today_child_grandchild_id]
+    );
 
     db.remove_from_today(
         TASK_ID,
@@ -881,17 +901,17 @@ fn today_projection_shows_only_direct_non_member_child_tasks() {
     let projected = db.list_today().unwrap();
     assert_eq!(
         projected[0]
-            .direct_child_tasks
+            .child_items
             .iter()
-            .map(|task| task.id.as_str())
+            .map(|child| child.id.as_str())
             .collect::<Vec<_>>(),
-        vec![TASK_ID, second_task_id]
-    );
-    assert!(
-        projected[0]
-            .direct_child_tasks
-            .iter()
-            .all(|task| task.id != grandchild_id)
+        vec![
+            TASK_ID,
+            today_child_grandchild_id,
+            second_task_id,
+            grandchild_id,
+            nested_project_id,
+        ]
     );
 }
 
@@ -1084,6 +1104,78 @@ fn progress_append_and_queries_do_not_change_current_fields() {
         })
     ));
     assert_eq!(db.progress_timeline(TASK_ID).unwrap().len(), 3);
+}
+
+#[test]
+fn today_project_steps_include_descendant_progress_with_source() {
+    let mut db = Database::open_in_memory().unwrap();
+    let child_project_id = "10000000-0000-0000-0000-000000000002";
+    create(
+        &mut db,
+        node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "parent", 0),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(
+            child_project_id,
+            NodeKind::Project,
+            PROJECT_ID,
+            "child-project",
+            0,
+        ),
+    )
+    .unwrap();
+    create(
+        &mut db,
+        node(TASK_ID, NodeKind::Task, child_project_id, "child-task", 0),
+    )
+    .unwrap();
+    db.add_to_today(
+        PROJECT_ID,
+        0,
+        "44000000-0000-0000-0000-000000000010",
+        metadata("today-parent"),
+    )
+    .unwrap();
+    db.append_progress_event(
+        child_project_id,
+        NewProgressEvent {
+            id: "44000000-0000-0000-0000-000000000011",
+            kind: ProgressEventKind::Progress,
+            summary: "Child project progress",
+            step_status: None,
+        },
+        1,
+        metadata("child-project-progress"),
+    )
+    .unwrap();
+    db.append_progress_event(
+        TASK_ID,
+        NewProgressEvent {
+            id: "44000000-0000-0000-0000-000000000012",
+            kind: ProgressEventKind::Delivery,
+            summary: "Child task delivery",
+            step_status: None,
+        },
+        1,
+        metadata("child-task-delivery"),
+    )
+    .unwrap();
+
+    assert!(db.recent_progress_events(PROJECT_ID, 3).unwrap().is_empty());
+    let recent = db.recent_subtree_progress_events(PROJECT_ID, 3).unwrap();
+    assert_eq!(recent.len(), 2);
+    assert_eq!(recent[0].summary, "Child task delivery");
+    assert_eq!(recent[0].subject_title, "child-task");
+    assert_eq!(recent[1].summary, "Child project progress");
+    assert_eq!(recent[1].subject_title, "child-project");
+
+    let timeline = db.subtree_progress_timeline(PROJECT_ID).unwrap();
+    assert_eq!(timeline.len(), 2);
+    assert_eq!(timeline[0].subject_node_id, child_project_id);
+    assert_eq!(timeline[1].subject_node_id, TASK_ID);
+    assert!(db.list_today().unwrap()[0].has_steps);
 }
 
 #[test]

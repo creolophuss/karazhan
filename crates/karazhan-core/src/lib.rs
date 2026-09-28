@@ -469,7 +469,7 @@ pub struct TodayItem {
     pub blocker: Option<String>,
     pub has_steps: bool,
     pub has_available_workspace: bool,
-    pub direct_child_tasks: Vec<Task>,
+    pub child_items: Vec<ProjectTaskItem>,
     pub is_quick_item: bool,
 }
 
@@ -477,6 +477,7 @@ pub struct TodayItem {
 pub struct ProgressEvent {
     pub id: String,
     pub subject_node_id: String,
+    pub subject_title: String,
     pub occurred_at: String,
     pub recorded_at: String,
     pub event_type: String,
@@ -1584,10 +1585,13 @@ impl Database {
             status,
             priority,
             blocker,
-            has_steps,
+            mut has_steps,
             is_quick_item,
         ) in explicit_items
         {
+            if kind == "project" {
+                has_steps = self.has_business_steps_in_subtree(&node_id)?;
+            }
             let has_available_workspace = self.connection.query_row(
                 "SELECT EXISTS (
                    SELECT 1 FROM resource_bindings
@@ -1615,27 +1619,47 @@ impl Database {
                     .query_map(params![&node_id, SYSTEM_ROOT_ID], |row| row.get(0))?
                     .collect::<rusqlite::Result<Vec<String>>>()?
             };
-            let direct_child_tasks = {
+            let mut child_items = {
                 let mut statement = self.connection.prepare(
-                    "SELECT n.id, n.parent_id, n.key, n.title, n.summary, n.goal,
+                    "WITH RECURSIVE child_tree(id, sort_path) AS (
+                       SELECT n.id, printf('%020d:%s', n.position, n.id)
+                       FROM work_nodes n
+                       WHERE n.parent_id = ?1
+                         AND n.kind IN ('project', 'task')
+                         AND n.archived_at IS NULL
+                         AND NOT EXISTS (
+                           SELECT 1 FROM today_items ti WHERE ti.node_id = n.id
+                         )
+                       UNION ALL
+                       SELECT n.id, parent.sort_path || '/' || printf('%020d:%s', n.position, n.id)
+                       FROM work_nodes n
+                       JOIN child_tree parent ON n.parent_id = parent.id
+                       WHERE n.kind IN ('project', 'task')
+                         AND n.archived_at IS NULL
+                         AND NOT EXISTS (
+                           SELECT 1 FROM today_items ti WHERE ti.node_id = n.id
+                         )
+                     )
+                     SELECT n.id, n.parent_id, n.kind, n.key, n.title, n.summary, n.goal,
                             n.acceptance_markdown, n.work_status, n.priority, n.blocker,
-                            n.revision,
+                            n.position, n.revision,
                             EXISTS (SELECT 1 FROM progress_events pe
                                     WHERE pe.subject_node_id = n.id
                                       AND pe.event_type IN ('progress', 'delivery')
                                       AND pe.summary <> 'work item fields updated')
-                     FROM work_nodes n JOIN tasks t ON t.node_id = n.id
-                     WHERE n.parent_id = ?1
-                       AND n.archived_at IS NULL
-                       AND NOT EXISTS (
-                         SELECT 1 FROM today_items ti WHERE ti.node_id = n.id
-                       )
-                     ORDER BY n.position, n.id",
+                     FROM child_tree
+                     JOIN work_nodes n ON n.id = child_tree.id
+                     ORDER BY child_tree.sort_path",
                 )?;
                 statement
-                    .query_map([&node_id], task_from_row)?
+                    .query_map([&node_id], project_task_item_from_row)?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             };
+            for child in &mut child_items {
+                if child.kind == "project" {
+                    child.has_steps = self.has_business_steps_in_subtree(&child.id)?;
+                }
+            }
             result.push(TodayItem {
                 node_id,
                 kind,
@@ -1650,7 +1674,7 @@ impl Database {
                 blocker,
                 has_steps,
                 has_available_workspace,
-                direct_child_tasks,
+                child_items,
                 is_quick_item,
             });
         }
@@ -1663,13 +1687,49 @@ impl Database {
         limit: usize,
     ) -> Result<Vec<ProgressEvent>, DomainError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, subject_node_id, occurred_at, recorded_at, event_type,
-                    summary, step_status, blocker, actor_type, actor_ref, channel
-             FROM progress_events
-             WHERE subject_node_id = ?1
-               AND event_type IN ('progress', 'delivery')
-               AND summary <> 'work item fields updated'
-             ORDER BY occurred_at DESC, recorded_at DESC, id DESC
+            "SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
+                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.channel, n.title
+             FROM progress_events pe
+             JOIN work_nodes n ON n.id = pe.subject_node_id
+             WHERE pe.subject_node_id = ?1
+               AND pe.event_type IN ('progress', 'delivery')
+               AND pe.summary <> 'work item fields updated'
+             ORDER BY pe.occurred_at DESC, pe.recorded_at DESC, pe.id DESC
+             LIMIT ?2",
+        )?;
+        Ok(statement
+            .query_map(params![node_id, limit as i64], progress_event_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn recent_subtree_progress_events(
+        &self,
+        node_id: &str,
+        limit: usize,
+    ) -> Result<Vec<ProgressEvent>, DomainError> {
+        let mut statement = self.connection.prepare(
+            "WITH RECURSIVE subtree(id) AS (
+               SELECT id FROM work_nodes WHERE id = ?1
+               UNION ALL
+               SELECT child.id
+               FROM work_nodes child
+               JOIN subtree parent ON child.parent_id = parent.id
+               WHERE child.archived_at IS NULL
+                 AND child.kind IN ('project', 'task')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM today_items ti WHERE ti.node_id = child.id
+                 )
+             )
+             SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
+                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.channel, n.title
+             FROM progress_events pe
+             JOIN subtree ON subtree.id = pe.subject_node_id
+             JOIN work_nodes n ON n.id = pe.subject_node_id
+             WHERE pe.event_type IN ('progress', 'delivery')
+               AND pe.summary <> 'work item fields updated'
+             ORDER BY pe.occurred_at DESC, pe.recorded_at DESC, pe.id DESC
              LIMIT ?2",
         )?;
         Ok(statement
@@ -1679,15 +1739,75 @@ impl Database {
 
     pub fn progress_timeline(&self, node_id: &str) -> Result<Vec<ProgressEvent>, DomainError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, subject_node_id, occurred_at, recorded_at, event_type,
-                    summary, step_status, blocker, actor_type, actor_ref, channel
-             FROM progress_events
-             WHERE subject_node_id = ?1
-             ORDER BY occurred_at, recorded_at, id",
+            "SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
+                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.channel, n.title
+             FROM progress_events pe
+             JOIN work_nodes n ON n.id = pe.subject_node_id
+             WHERE pe.subject_node_id = ?1
+             ORDER BY pe.occurred_at, pe.recorded_at, pe.id",
         )?;
         Ok(statement
             .query_map([node_id], progress_event_from_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn subtree_progress_timeline(
+        &self,
+        node_id: &str,
+    ) -> Result<Vec<ProgressEvent>, DomainError> {
+        let mut statement = self.connection.prepare(
+            "WITH RECURSIVE subtree(id) AS (
+               SELECT id FROM work_nodes WHERE id = ?1
+               UNION ALL
+               SELECT child.id
+               FROM work_nodes child
+               JOIN subtree parent ON child.parent_id = parent.id
+               WHERE child.archived_at IS NULL
+                 AND child.kind IN ('project', 'task')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM today_items ti WHERE ti.node_id = child.id
+                 )
+             )
+             SELECT pe.id, pe.subject_node_id, pe.occurred_at, pe.recorded_at, pe.event_type,
+                    pe.summary, pe.step_status, pe.blocker, pe.actor_type, pe.actor_ref,
+                    pe.channel, n.title
+             FROM progress_events pe
+             JOIN subtree ON subtree.id = pe.subject_node_id
+             JOIN work_nodes n ON n.id = pe.subject_node_id
+             WHERE pe.event_type IN ('progress', 'delivery')
+               AND pe.summary <> 'work item fields updated'
+             ORDER BY pe.occurred_at, pe.recorded_at, pe.id",
+        )?;
+        Ok(statement
+            .query_map([node_id], progress_event_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn has_business_steps_in_subtree(&self, node_id: &str) -> Result<bool, DomainError> {
+        Ok(self.connection.query_row(
+            "WITH RECURSIVE subtree(id) AS (
+               SELECT id FROM work_nodes WHERE id = ?1
+               UNION ALL
+               SELECT child.id
+               FROM work_nodes child
+               JOIN subtree parent ON child.parent_id = parent.id
+               WHERE child.archived_at IS NULL
+                 AND child.kind IN ('project', 'task')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM today_items ti WHERE ti.node_id = child.id
+                 )
+             )
+             SELECT EXISTS (
+               SELECT 1
+               FROM progress_events pe
+               JOIN subtree ON subtree.id = pe.subject_node_id
+               WHERE pe.event_type IN ('progress', 'delivery')
+                 AND pe.summary <> 'work item fields updated'
+             )",
+            [node_id],
+            |row| row.get(0),
+        )?)
     }
 
     pub fn list_resource_bindings(
@@ -3719,10 +3839,30 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
     })
 }
 
+fn project_task_item_from_row(row: &Row<'_>) -> rusqlite::Result<ProjectTaskItem> {
+    Ok(ProjectTaskItem {
+        id: row.get(0)?,
+        parent_id: row.get(1)?,
+        kind: row.get(2)?,
+        key: row.get(3)?,
+        title: row.get(4)?,
+        summary: row.get(5)?,
+        goal: row.get(6)?,
+        acceptance: row.get(7)?,
+        status: row.get(8)?,
+        priority: row.get(9)?,
+        blocker: row.get(10)?,
+        position: row.get(11)?,
+        revision: row.get(12)?,
+        has_steps: row.get(13)?,
+    })
+}
+
 fn progress_event_from_row(row: &Row<'_>) -> rusqlite::Result<ProgressEvent> {
     Ok(ProgressEvent {
         id: row.get(0)?,
         subject_node_id: row.get(1)?,
+        subject_title: row.get(11)?,
         occurred_at: row.get(2)?,
         recorded_at: row.get(3)?,
         event_type: row.get(4)?,

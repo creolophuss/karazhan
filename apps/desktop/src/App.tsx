@@ -10,10 +10,11 @@ import AddStepModal, { type AddStepTarget } from "./components/AddStepModal";
 import { appendManualStep } from "./features/projects";
 import {
   allTodayNodeIds,
+  childItemPath,
+  childItemRows,
   createQuickItem,
   deleteQuickItem,
   describeClientError,
-  directChildTaskRows,
   isTodayItemExpandable,
   loadToday,
   moveTodayItem,
@@ -384,9 +385,9 @@ export default function App() {
               {today.items.map((item, targetPosition) => {
                 const expanded = expandedNodeIds.has(item.node_id);
                 const detailsId = `today-details-${item.node_id}`;
-                const childTasks = directChildTaskRows(item);
+                const childItems = childItemRows(item);
                 const expandable = isTodayItemExpandable(item);
-                const leafTask = item.kind === "task" && childTasks.length === 0;
+                const leafTask = item.kind === "task" && childItems.length === 0;
                 const deleteRevealed = revealedDeleteNodeId === item.node_id;
                 if (item.is_quick_item) return (
                   <li className={`today-row quick-item-row${draggedNodeId === item.node_id ? " dragging" : ""}${dropTargetNodeId === item.node_id ? " drop-target" : ""}`} data-node-id={item.node_id} data-position={item.position} key={item.node_id} onPointerEnter={() => { if (draggedNodeId !== null && draggedNodeId !== item.node_id) setDropTargetNodeId(item.node_id); }} onPointerUp={() => { if (draggedNodeId !== null) void handleDrop(targetPosition); }} onPointerCancel={() => { setDraggedNodeId(null); setDropTargetNodeId(null); }}>
@@ -518,18 +519,20 @@ export default function App() {
                           nodeId={item.node_id}
                           blocker={item.blocker}
                           enabled={expanded}
+                          includeDescendants={item.kind === "project"}
                           refreshToken={stepsVersion}
                         />
-                        {childTasks.length > 0 && (
+                        {childItems.length > 0 && (
                           <section className="today-todo" aria-labelledby={`today-todo-${item.node_id}`}>
                             <h3 id={`today-todo-${item.node_id}`}>To-do</h3>
                           <ul
                             className="child-task-list"
-                            aria-label={`Direct child tasks of ${item.title}`}
+                            aria-label={`Child items of ${item.title}`}
                           >
-                            {childTasks.map((child) => (
-                              <li className="child-task" data-task-id={child.id} key={child.id} onContextMenu={(event) => openStepMenu(event, { id: child.id, title: child.title, revision: child.revision })}>
+                            {childItems.map((child) => (
+                              <li className="child-task" data-child-id={child.id} key={child.id} onContextMenu={(event) => openStepMenu(event, { id: child.id, title: child.title, revision: child.revision })}>
                                 <span className="child-drag-handle" aria-hidden="true">⠿</span>
+                                {child.kind === "project" && <span className="kind-marker project" aria-hidden="true" />}
                                 <WorkItemQuickControls
                                   nodeId={child.id}
                                   revision={child.revision}
@@ -537,19 +540,19 @@ export default function App() {
                                   priority={child.priority}
                                   blocker={child.blocker}
                                   label={child.title}
-                                  checkbox
+                                  checkbox={child.kind === "task"}
                                   onSaved={refreshAfterWorkItemSave}
                                 />
                                 <span className="child-task-copy">
                                   <span className="child-task-title">
-                                    {todayPath(item)} › {child.title}
+                                    {childItemPath(item, child)}
                                   </span>
                                   {child.summary && (
                                     <span className="today-description">{child.summary}</span>
                                   )}
                                 </span>
                                 {child.has_steps && <button className="child-step-chevron" type="button" aria-expanded={expandedNodeIds.has(child.id)} aria-label={`${expandedNodeIds.has(child.id) ? "Collapse" : "Expand"} ${child.title} steps`} onClick={() => setExpandedNodeIds((current) => toggleTodayRow(current, child.id))}><span aria-hidden="true">›</span></button>}
-                                {child.has_steps && <div className="child-task-steps" hidden={!expandedNodeIds.has(child.id)}><TodayRecentSteps nodeId={child.id} blocker={child.blocker} enabled={expandedNodeIds.has(child.id)} refreshToken={stepsVersion} /></div>}
+                                {child.has_steps && <div className="child-task-steps" hidden={!expandedNodeIds.has(child.id)}><TodayRecentSteps nodeId={child.id} blocker={child.blocker} enabled={expandedNodeIds.has(child.id)} includeDescendants={child.kind === "project"} refreshToken={stepsVersion} /></div>}
                               </li>
                             ))}
                           </ul>
