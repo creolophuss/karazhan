@@ -12,6 +12,7 @@ LAUNCHER_TARGET="$BIN_DIR/medivh"
 APP_SOURCE_OVERRIDE=${KARAZHAN_INSTALL_APP_SOURCE:-}
 STALE_APP_BUNDLE="$SCRIPT_DIR/target/release/bundle/macos/Karazhan.app"
 MCP_SOURCE=${KARAZHAN_INSTALL_MCP_SOURCE:-"$SCRIPT_DIR/target/release/karazhan-mcp"}
+PRODUCT_DATABASE_PATH=${KARAZHAN_MEDIVH_DATABASE_PATH:-"$HOME/Library/Application Support/com.jiayi.karazhan/karazhan.sqlite3"}
 SKIP_BUILD=${KARAZHAN_INSTALL_SKIP_BUILD:-0}
 SKIP_APP=${KARAZHAN_INSTALL_SKIP_APP:-0}
 INSTALL_PROXY=${KARAZHAN_INSTALL_PROXY:-http://127.0.0.1:7897}
@@ -381,8 +382,48 @@ fi
 [ ! -L "$PROFILE_DIR" ] || die "Medivh profile path must not be a symlink: $PROFILE_DIR"
 if [ ! -d "$PROFILE_DIR" ]; then
   "$HERMES_COMMAND" profile create "$PROFILE_NAME" --no-skills \
-    --description "Prepare top-level Project Workspaces without connecting to Karazhan"
+    --description "Prepare and register top-level Project Workspaces"
   [ -d "$PROFILE_DIR" ] || die "Hermes did not create the expected profile: $PROFILE_DIR"
+fi
+
+MCP_COMMAND_CONFIG_KEY=mcp_servers.karazhan.command
+MCP_DATABASE_CONFIG_KEY=mcp_servers.karazhan.env.KARAZHAN_DATABASE_PATH
+MCP_COMMAND_CONFIG_VALUE="$BIN_DIR/karazhan-mcp"
+
+read_medivh_config_value() {
+  config_key=$1
+  if config_output=$("$HERMES_COMMAND" -p "$PROFILE_NAME" config get "$config_key" 2>&1); then
+    printf '%s' "$config_output"
+    return 0
+  else
+    config_status=$?
+  fi
+  if [ "$config_status" -eq 1 ] && [ "$config_output" = "Config key not set: $config_key" ]; then
+    return 1
+  fi
+  printf 'karazhan install: cannot inspect Medivh config key %s: %s\n' \
+    "$config_key" "$config_output" >&2
+  return 2
+}
+
+MCP_COMMAND_CONFIG_MISSING=0
+if existing_mcp_command=$(read_medivh_config_value "$MCP_COMMAND_CONFIG_KEY"); then
+  [ "$existing_mcp_command" = "$MCP_COMMAND_CONFIG_VALUE" ] || \
+    die "Medivh MCP configuration conflict at $MCP_COMMAND_CONFIG_KEY"
+else
+  config_status=$?
+  [ "$config_status" -eq 1 ] || die "could not validate Medivh MCP command configuration"
+  MCP_COMMAND_CONFIG_MISSING=1
+fi
+
+MCP_DATABASE_CONFIG_MISSING=0
+if existing_mcp_database=$(read_medivh_config_value "$MCP_DATABASE_CONFIG_KEY"); then
+  [ "$existing_mcp_database" = "$PRODUCT_DATABASE_PATH" ] || \
+    die "Medivh MCP configuration conflict at $MCP_DATABASE_CONFIG_KEY"
+else
+  config_status=$?
+  [ "$config_status" -eq 1 ] || die "could not validate Medivh MCP database configuration"
+  MCP_DATABASE_CONFIG_MISSING=1
 fi
 
 PACKAGE_SOURCE="$INSTALL_TMP/custodian-startup-kit"
@@ -475,6 +516,7 @@ BASELINE_ROOT="$STATE_DIR/baseline"
 PROFILE_SOUL_SOURCE="$SCRIPT_DIR/blueprints/medivh/SOUL.md"
 PROFILE_AGENTS_SOURCE="$SCRIPT_DIR/blueprints/medivh/AGENTS.md"
 PROFILE_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/workspace-provisioning"
+PROFILE_MCP_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/medivh-karazhan-registration"
 PROFILE_PACKAGE_TARGET="$PROFILE_DIR/packages/custodian-startup-kit"
 
 if [ "$SKIP_APP" != 1 ]; then
@@ -485,6 +527,7 @@ preflight_managed_path "$LAUNCHER_SOURCE" "$LAUNCHER_TARGET" "$BASELINE_ROOT/bin
 preflight_managed_path "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
 preflight_managed_path "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
 preflight_managed_path "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
+preflight_managed_path "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
 preflight_managed_path "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
 
 if [ "$SKIP_APP" != 1 ]; then
@@ -500,7 +543,30 @@ install_versioned_path "Medivh launcher" "$LAUNCHER_SOURCE" "$LAUNCHER_TARGET" "
 install_versioned_path "Medivh SOUL" "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
 install_versioned_path "Medivh AGENTS" "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
 install_versioned_path "Medivh provisioning Skill" "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
+install_versioned_path "Medivh MCP Skill" "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
 install_versioned_path "Custodian startup kit" "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
+
+if [ "$MCP_COMMAND_CONFIG_MISSING" -eq 1 ]; then
+  "$HERMES_COMMAND" -p "$PROFILE_NAME" config set --force \
+    "$MCP_COMMAND_CONFIG_KEY" "$MCP_COMMAND_CONFIG_VALUE" >/dev/null
+fi
+if [ "$MCP_DATABASE_CONFIG_MISSING" -eq 1 ]; then
+  "$HERMES_COMMAND" -p "$PROFILE_NAME" config set --force \
+    "$MCP_DATABASE_CONFIG_KEY" "$PRODUCT_DATABASE_PATH" >/dev/null
+fi
+verified_mcp_command=$(read_medivh_config_value "$MCP_COMMAND_CONFIG_KEY") || \
+  die "Medivh MCP command configuration was not persisted"
+[ "$verified_mcp_command" = "$MCP_COMMAND_CONFIG_VALUE" ] || \
+  die "Medivh MCP command configuration verification failed"
+verified_mcp_database=$(read_medivh_config_value "$MCP_DATABASE_CONFIG_KEY") || \
+  die "Medivh MCP database configuration was not persisted"
+[ "$verified_mcp_database" = "$PRODUCT_DATABASE_PATH" ] || \
+  die "Medivh MCP database configuration verification failed"
+if [ "$MCP_COMMAND_CONFIG_MISSING" -eq 1 ] || [ "$MCP_DATABASE_CONFIG_MISSING" -eq 1 ]; then
+  printf '%s|%s|%s|%s\n' "Medivh MCP config" "updated" "$PROFILE_DIR/config.yaml" "Karazhan stdio server" >> "$STATUS_FILE"
+else
+  printf '%s|%s|%s|%s\n' "Medivh MCP config" "no-op" "$PROFILE_DIR/config.yaml" "Karazhan stdio server" >> "$STATUS_FILE"
+fi
 
 printf 'Karazhan install %s (%s) results:\n' "$INSTALL_VERSION" "$SOURCE_COMMIT"
 while IFS='|' read -r label status target detail; do

@@ -57,6 +57,8 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   const cargoHome = path.join(root, ".cargo");
   const rustupHome = path.join(root, ".rustup");
   const cargoLog = path.join(root, "cargo.log");
+  const mcpCommandConfig = path.join(profileDirectory, "mock-mcp-command");
+  const mcpDatabaseConfig = path.join(profileDirectory, "mock-mcp-database");
   const rustTarget =
     process.arch === "arm64"
       ? "aarch64-apple-darwin"
@@ -140,6 +142,28 @@ if [ "\${1:-}" = "profile" ] && [ "\${2:-}" = "create" ]; then
   chmod 755 "${binDirectory}/medivh"
   exit 0
 fi
+if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "medivh" ] && [ "\${3:-}" = "config" ] && [ "\${4:-}" = "get" ]; then
+  case "\${5:-}" in
+    mcp_servers.karazhan.command) config_file="${mcpCommandConfig}" ;;
+    mcp_servers.karazhan.env.KARAZHAN_DATABASE_PATH) config_file="${mcpDatabaseConfig}" ;;
+    *) exit 2 ;;
+  esac
+  if [ -f "$config_file" ]; then
+    cat "$config_file"
+    exit 0
+  fi
+  printf 'Config key not set: %s\\n' "\${5:-}"
+  exit 1
+fi
+if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "medivh" ] && [ "\${3:-}" = "config" ] && [ "\${4:-}" = "set" ] && [ "\${5:-}" = "--force" ]; then
+  case "\${6:-}" in
+    mcp_servers.karazhan.command) config_file="${mcpCommandConfig}" ;;
+    mcp_servers.karazhan.env.KARAZHAN_DATABASE_PATH) config_file="${mcpDatabaseConfig}" ;;
+    *) exit 2 ;;
+  esac
+  printf '%s\\n' "\${7:-}" > "$config_file"
+  exit 0
+fi
 if [ "\${KARAZHAN_TEST_HERMES_SLEEP:-0}" != "0" ]; then
   sleep "$KARAZHAN_TEST_HERMES_SLEEP"
 fi
@@ -207,6 +231,12 @@ fi
   await stat(
     path.join(
       profileDirectory,
+      "skills/karazhan/medivh-karazhan-registration/SKILL.md",
+    ),
+  );
+  await stat(
+    path.join(
+      profileDirectory,
       "packages/custodian-startup-kit/.agents/skills/workspace-provisioning/SKILL.md",
     ),
   );
@@ -226,6 +256,14 @@ fi
   await stat(path.join(appSource, "Contents/MacOS/Karazhan"));
   await stat(path.join(binDirectory, "karazhan-mcp"));
   await stat(path.join(binDirectory, "medivh"));
+  assert.equal(
+    await readFile(mcpCommandConfig, "utf8"),
+    `${path.join(binDirectory, "karazhan-mcp")}\n`,
+  );
+  assert.equal(
+    await readFile(mcpDatabaseConfig, "utf8"),
+    `${path.join(root, "Library/Application Support/com.jiayi.karazhan/karazhan.sqlite3")}\n`,
+  );
   assert.match(
     await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app"), "utf8"),
     /^[a-f0-9]{64}\n$/,
@@ -308,6 +346,13 @@ fi
   assert.notEqual(duplicate.status, 0);
   assert.match(duplicate.stderr, /already running/i);
   await new Promise((resolve) => launcher.once("exit", resolve));
+
+  await writeFile(mcpCommandConfig, "/different/karazhan-mcp\n");
+  env.KARAZHAN_INSTALL_VERSION = "0.4.0";
+  const mcpConflict = run();
+  assert.notEqual(mcpConflict.status, 0);
+  assert.match(mcpConflict.stderr, /MCP configuration conflict/i);
+  await writeFile(mcpCommandConfig, `${path.join(binDirectory, "karazhan-mcp")}\n`);
 
   const localAgents = path.join(profileDirectory, "AGENTS.md");
   await writeFile(localAgents, "locally changed\n");

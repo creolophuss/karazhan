@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type ActorType =
   | "user"
   | "task_agent"
+  | "medivh"
   | "system"
   | "unknown";
 

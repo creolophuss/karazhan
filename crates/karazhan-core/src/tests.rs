@@ -50,6 +50,18 @@ fn custodian_preserves_the_existing_task_agent_wire_value() {
     );
 }
 
+#[test]
+fn medivh_has_distinct_actor_provenance() {
+    assert_eq!(
+        serde_json::to_value(ActorType::Medivh).unwrap(),
+        serde_json::json!("medivh")
+    );
+    assert_eq!(
+        serde_json::from_value::<ActorType>(serde_json::json!("medivh")).unwrap(),
+        ActorType::Medivh
+    );
+}
+
 fn create(db: &mut Database, value: NewNode<'_>) -> Result<MutationResult, DomainError> {
     let key = format!("create:{}", value.id);
     db.create_node(value, metadata(&key))

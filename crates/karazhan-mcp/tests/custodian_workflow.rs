@@ -4,11 +4,12 @@ use std::{
 };
 
 use karazhan_core::{
-    ActorType, Channel, ProgressEventKind, ResourceAvailability, ResourceKind, SYSTEM_ROOT_ID,
+    ActorType, BacklogFilter, BacklogKind, Channel, Priority, ProgressEventKind,
+    ResourceAvailability, ResourceKind, SYSTEM_ROOT_ID,
     application::{
         AddResourceBindingCommand, AddTodayCommand, AppendProgressCommand, Command, CommandContext,
-        CreateProjectCommand, CreateTaskCommand, Query, RemoveTodayCommand, ReorderTodayCommand,
-        UpdateResourceAvailabilityCommand,
+        CreateBacklogCommand, CreateProjectCommand, CreateTaskCommand, Query, RemoveTodayCommand,
+        ReorderTodayCommand, UpdateResourceAvailabilityCommand,
     },
 };
 use serde_json::{Value, json};
@@ -128,6 +129,102 @@ fn context(idempotency_key: &str) -> CommandContext {
         actor_ref: Some("custodian:workflow-test".into()),
         channel: Channel::Mcp,
     }
+}
+
+fn medivh_context(idempotency_key: &str, project_id: &str) -> CommandContext {
+    CommandContext {
+        idempotency_key: idempotency_key.into(),
+        actor_type: ActorType::Medivh,
+        actor_ref: Some(format!("medivh:{project_id}")),
+        channel: Channel::Mcp,
+    }
+}
+
+#[test]
+fn medivh_can_register_a_top_level_project_and_capture_requested_backlog() {
+    let directory = tempfile::tempdir().expect("temporary product data");
+    let mut client = McpClient::start(&directory.path().join("karazhan.sqlite3"));
+    let project_id = "10000000-0000-0000-0000-000000000020";
+    let binding_id = "50000000-0000-0000-0000-000000000020";
+    let backlog_id = "30000000-0000-0000-0000-000000000020";
+
+    client.command(Command::CreateProject(CreateProjectCommand {
+        id: project_id.into(),
+        parent_id: SYSTEM_ROOT_ID.into(),
+        key: "medivh-project".into(),
+        title: "Medivh Project".into(),
+        summary: None,
+        position: 0,
+        slug: None,
+        context_path: Some("/isolated/medivh-project/context".into()),
+        context: medivh_context("project:medivh:create", project_id),
+    }));
+    client.command(Command::AddResourceBinding(AddResourceBindingCommand {
+        id: binding_id.into(),
+        node_id: project_id.into(),
+        kind: ResourceKind::Workspace,
+        locator: "/isolated/medivh-project".into(),
+        is_primary: true,
+        availability: ResourceAvailability::Available,
+        source: "medivh_manifest".into(),
+        context: medivh_context("binding:medivh:create", project_id),
+    }));
+    let backlog_command = Command::CreateBacklog(CreateBacklogCommand {
+        id: backlog_id.into(),
+        parent_id: project_id.into(),
+        key: "capture-release-idea".into(),
+        title: "Capture release idea".into(),
+        description: Some("User explicitly requested this Backlog item".into()),
+        kind: BacklogKind::Idea,
+        priority: Priority::Medium,
+        tags: vec!["medivh".into()],
+        context: CommandContext {
+            idempotency_key: format!("backlog:{backlog_id}:create"),
+            actor_type: ActorType::Medivh,
+            actor_ref: Some(format!("medivh:backlog:{backlog_id}")),
+            channel: Channel::Mcp,
+        },
+    });
+    client.command(backlog_command.clone());
+    let replay = client.command(backlog_command);
+    assert_eq!(replay["payload"]["replayed"], true);
+
+    let project = client.query(Query::GetProject {
+        id: project_id.into(),
+    });
+    assert_eq!(project["payload"]["parent_id"], SYSTEM_ROOT_ID);
+    assert_eq!(
+        project["payload"]["context_path"],
+        "/isolated/medivh-project/context"
+    );
+
+    let bindings = client.query(Query::ListResourceBindings {
+        node_id: project_id.into(),
+    });
+    assert_eq!(bindings["payload"].as_array().expect("bindings").len(), 1);
+    assert_eq!(bindings["payload"][0]["id"], binding_id);
+    assert_eq!(bindings["payload"][0]["is_primary"], true);
+    assert_eq!(bindings["payload"][0]["source"], "medivh_manifest");
+    assert_eq!(
+        bindings["payload"][0]["created_actor"],
+        format!("medivh:{project_id}")
+    );
+    assert_eq!(bindings["payload"][0]["write_source"], "mcp");
+
+    let backlog = client.query(Query::ListBacklog {
+        filter: BacklogFilter {
+            parent_id: Some(project_id.into()),
+            ..BacklogFilter::default()
+        },
+    });
+    assert_eq!(backlog["payload"].as_array().expect("backlog").len(), 1);
+    assert_eq!(backlog["payload"][0]["id"], backlog_id);
+    assert_eq!(backlog["payload"][0]["parent_id"], project_id);
+    assert_eq!(backlog["payload"][0]["backlog_kind"], "idea");
+    assert_eq!(backlog["payload"][0]["priority"], "medium");
+    assert_eq!(backlog["payload"][0]["tags"], json!(["medivh"]));
+
+    client.finish();
 }
 
 #[test]

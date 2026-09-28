@@ -244,6 +244,7 @@ pub enum ActorType {
     User,
     #[serde(rename = "task_agent")]
     Custodian,
+    Medivh,
     System,
     Unknown,
 }
@@ -253,6 +254,7 @@ impl ActorType {
         match self {
             Self::User => "user",
             Self::Custodian => "task_agent",
+            Self::Medivh => "medivh",
             Self::System => "system",
             Self::Unknown => "unknown",
         }

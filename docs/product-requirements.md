@@ -1,7 +1,7 @@
 # Karazhan（Agent Workbench 阶段 3）产品需求
 
 > 初次定稿：2026-09-21
-> 最近修订：2026-09-27
+> 最近修订：2026-09-28
 > 状态：用户已确认定稿；阶段 3 唯一事实来源
 > 目标读者：用户、产品设计 Child、TDD / 开发 Child
 > 用途：作为阶段 3 后续设计、TDD、实现与验收的唯一事实来源
@@ -43,7 +43,7 @@ Karazhan 是同步与可视化控制面，不是 Agent 运行时或执行前置�
 
 ### 2.2 Medivh
 
-Medivh 是用户的顶层文件系统管家。它按已确认目标创建 Project Workspace、稳定本地身份、Context 和必要 instructions，但不连接 Karazhan，不创建或更新 Karazhan 节点，也不启动、调度或管理 Custodian。Workspace 准备完成后，由用户在该目录启动 Custodian。
+Medivh 是用户的顶层 Workspace 与 Backlog 捕获管家。它按已确认目标创建 Project Workspace、稳定本地身份、Context 和必要 instructions。顶层 Workspace 持久化并验证后，Medivh 可以通过 Karazhan MCP 使用同一稳定 UUID 幂等创建或查询对应的顶层 Project，并登记、查询该 Project 的 primary Workspace binding；MCP 不可用时仍先保留完整本地 Workspace，之后以相同身份重试。用户明确要求记录 Backlog 时，Medivh 还可以生成稳定 UUID，并在系统 Root 或用户明确指定且经查询确认的 Project / Task 下新增、查询该 Backlog。Medivh 不创建 Child Project / Task，不维护 Today、progress、业务字段或生命周期，也不编辑、移动、Discard 或 Promote 已有 Backlog，不启动、调度或管理 Custodian。Workspace 准备与顶层登记结束后，由用户在该目录启动 Custodian。
 
 阶段 3 不负责启动、恢复或调度 Medivh、Custodian 或其他 Agent session。
 
@@ -51,7 +51,7 @@ Medivh 是用户的顶层文件系统管家。它按已确认目标创建 Projec
 
 Custodian 是统一负责 Project 或 Task Workspace 的 Agent 角色。Parent、Child 和 Sibling 只表示 Custodian Workspace 之间的关系，不是新的 Agent 类型。Custodian 先写自己的 Workspace 文件，再通过 MCP 注册或同步自己的 Project / Task、查询祖先结构与最近进展、创建 Child 节点、维护 Today 并提交交付。Custodian 报告完成只代表“已交付并等待评审”，不能自动把 Project / Task 设为 `done`。
 
-Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning` 与 `karazhan-mcp-collaboration`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 自身仍只安装和使用 `workspace-provisioning`，不得使用 Custodian 的 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
+Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning` 与 `karazhan-mcp-collaboration`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 安装并使用 `workspace-provisioning` 与独立的窄权限 Karazhan Skill，不使用 Custodian 的通用 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
 
 Workspace 的逻辑 Parent/Child 关系不要求物理目录嵌套。创建顶层 Workspace 前必须让用户确认精确目标目录；创建 Child 前必须让用户确认是否使用一个明确的独立目标目录。用户确认独立目录时，通过双方 `context/index.md` 中的稳定 Work ID 和显式绝对路径建立导航；用户不选择独立目录时，才回退到 `<parent-workspace>/children/<child>`。无论采用哪种布局，逻辑关系都不自动授予目标路径写权限。
 
@@ -556,7 +556,7 @@ loopback HTTP API（仅应用运行期间在线）
 - HTTP 只绑定 `127.0.0.1` / `::1`，使用高熵 token，并验证 Host / Origin。
 - 应用退出后 HTTP 端口释放；MVP 不增加常驻 LaunchAgent。
 - SQLite 数据位于 macOS Application Support 中的产品目录；正式 bundle identifier 由实现冻结。
-- 仓库根 `install.sh` 从当前 checkout 构建并以用户权限安装或更新 `Karazhan.app`、stdio MCP companion、Medivh Hermes Profile 中明确列出的托管文件、非扫描的 Custodian startup package 与 `medivh` 命令；它不执行 `git pull`，不覆盖检测到本地修改的托管文件，也不改写 Hermes 自有配置和运行状态。`memories/USER.md`、其他 memories、sessions 与非托管 Skills 始终归用户所有，不纳入 baseline、不替换也不删除。
+- 仓库根 `install.sh` 从当前 checkout 构建并以用户权限安装或更新 `Karazhan.app`、stdio MCP companion、Medivh Hermes Profile 中明确列出的托管文件、Medivh 窄权限 Karazhan Skill、非扫描的 Custodian startup package 与 `medivh` 命令；它还以冲突即停止的方式只补齐 Medivh Profile 的 `mcp_servers.karazhan.command` 和 `KARAZHAN_DATABASE_PATH` 两个配置叶子，不执行 `git pull`，不覆盖检测到本地修改的托管文件或不同的现有 MCP 配置，也不改写其他 Hermes 配置和运行状态。`memories/USER.md`、其他 memories、sessions 与非托管 Skills 始终归用户所有，不纳入 baseline、不替换也不删除。
 - 普通 release build 只生成可执行文件，不在 repository target 中留下可被 Launch Services 发现的 `.app`；`install.sh` 在临时 target 中生成安装 bundle，安装完成后仅保留 `~/Applications/Karazhan.app`，避免同一 bundle identifier 出现两份可启动副本。
 - 全部托管组件使用同一个 commit 派生安装版本：`tauri.conf.json` 提供基础 `major.minor`，完整 Git 历史中 `HEAD` 可达 commit 数作为 patch；构建通过临时 Tauri 配置把该版本写入 App，不修改 tracked 文件。正常安装要求非 shallow checkout 且不存在 tracked 未提交修改，并为每个目标分别记录内容 baseline、已部署版本与完整 commit SHA。安装版本更高才更新已有目标，相同版本为 no-op，降级拒绝；缺失目标可补装。首次接管无版本的已有托管目标前必须生成同目录时间戳备份，内容完全一致时可直接建立 baseline。`KARAZHAN_INSTALL_SKIP_APP=1` 跳过 App 构建、校验和安装，但继续处理 MCP 与 Medivh 组件。安装结束逐项目标报告新建、接管与备份、更新、no-op 或跳过状态。
 - `medivh` 命令以前台方式启动 `hermes -p medivh chat`；启动前同时检查对应 Hermes 进程与 PID lock，活动实例存在时拒绝重复启动，只清理由 launcher 留下且 owner PID 已不存在的陈旧 lock。
@@ -684,6 +684,7 @@ SQLite 必须直接或通过领域事务保证：
 31. **Import 恢复演练（延期，不计入当前 MVP 验收）**：完成一次 dry-run → apply → replay no-op → migration 故障 → restore → 核心计数核对演练。
 32. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
 33. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
+34. Medivh Profile 安装后可发现窄权限 Karazhan Skill，并通过已配置的 `karazhan-mcp` 对持久化且已验证的顶层 Workspace 执行幂等 Project 创建/查询和 primary Workspace binding 登记/查询；还可以按用户明确请求，在 Root 或用户明确指定且经查询确认的 Project / Task 下幂等新增、查询 Backlog。写入保留 `medivh` actor provenance，现有不同 MCP 配置不被静默覆盖，且 Medivh 仍不能管理 Child、Today、progress、业务字段、状态、既有 Backlog 编辑/移动/Discard/Promote 或 Custodian session。
 
 ## 16. 定稿确认
 

@@ -23,6 +23,9 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
     "skills/karazhan-mcp-collaboration/SKILL.md",
     "skills/karazhan-mcp-collaboration/agents/openai.yaml",
     "skills/karazhan-mcp-collaboration/references/mcp-workflows.md",
+    "skills/medivh-karazhan-registration/SKILL.md",
+    "skills/medivh-karazhan-registration/agents/openai.yaml",
+    "skills/medivh-karazhan-registration/references/mcp-workflows.md",
   ];
 
   await Promise.all(required.map((file) => access(new URL(file, blueprintUrl))));
@@ -36,6 +39,8 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
     contextContract,
     mcpSkill,
     mcpWorkflows,
+    medivhMcpSkill,
+    medivhMcpWorkflows,
     custodianInstructions,
     manifest,
     client,
@@ -70,6 +75,17 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
       "utf8",
     ),
     readFile(
+      new URL("skills/medivh-karazhan-registration/SKILL.md", blueprintUrl),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "skills/medivh-karazhan-registration/references/mcp-workflows.md",
+        blueprintUrl,
+      ),
+      "utf8",
+    ),
+    readFile(
       new URL(
         "skills/workspace-provisioning/assets/custodian-AGENTS.md",
         blueprintUrl,
@@ -84,10 +100,9 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   ]);
 
   for (const document of [medivhReadme, medivhSoul, medivhAgents]) {
-    assert.match(
-      document,
-      /does not connect to Karazhan|do not connect to Karazhan|never connects to Karazhan|no Karazhan/i,
-    );
+    assert.match(document, /Karazhan MCP/i);
+    assert.match(document, /top-level Project/i);
+    assert.match(document, /ResourceBinding|Workspace binding/i);
   }
   assert.match(medivhReadme, /top-level Project Workspace/);
   assert.match(medivhReadme, /Custodian/);
@@ -105,6 +120,23 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   assert.match(mcpSkill, /Medivh must not use it/);
   assert.match(mcpSkill, /Custodian/);
   assert.match(mcpSkill, /actor_type: task_agent/);
+  assert.match(medivhMcpSkill, /top-level Project Workspace/);
+  assert.match(medivhMcpSkill, /user.*explicit request/i);
+  assert.match(medivhMcpSkill, /Backlog/);
+  assert.match(medivhMcpSkill, /actor_type: medivh/);
+  assert.match(medivhMcpSkill, /must not|do not/i);
+  assert.match(
+    medivhMcpSkill,
+    /Child|Backlog|Today|progress|status|Custodian session/i,
+  );
+  assert.match(medivhMcpWorkflows, /"type": "create_project"/);
+  assert.match(medivhMcpWorkflows, /"type": "create_backlog"/);
+  assert.match(medivhMcpWorkflows, /"type": "add_resource_binding"/);
+  assert.match(medivhMcpWorkflows, /"actor_type": "medivh"/);
+  assert.doesNotMatch(
+    medivhMcpWorkflows,
+    /"type": "(?:update_backlog|move_backlog|discard_backlog|promote_backlog)"/,
+  );
   assert.match(mcpWorkflows, /"type": "add_resource_binding"/);
   assert.match(mcpWorkflows, /"type": "update_resource_availability"/);
   assert.match(mcpWorkflows, /do not read, scan, upload, or copy|without asking Karazhan to read/i);
@@ -118,6 +150,8 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
     contextContract,
     mcpSkill,
     mcpWorkflows,
+    medivhMcpSkill,
+    medivhMcpWorkflows,
     custodianInstructions,
   ]) {
     assert.doesNotMatch(document, /\b(?:Project|Task) Agent\b|\b(?:Parent|Child) Agent\b/);
@@ -125,5 +159,6 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   assert.match(manifest, /kind: ""/);
   assert.doesNotMatch(manifest, /agent_runs|karazhan:/);
   assert.match(client, /\| "task_agent"/);
-  assert.doesNotMatch(client, /"medivh"|"work_assistant"/);
+  assert.match(client, /\| "medivh"/);
+  assert.doesNotMatch(client, /"work_assistant"/);
 });
