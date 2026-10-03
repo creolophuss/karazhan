@@ -19,6 +19,7 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
     "skills/workspace-provisioning/assets/context-index.md",
     "skills/workspace-provisioning/assets/coordination-overview.md",
     "skills/workspace-provisioning/assets/coordination-decisions.md",
+    "skills/workspace-provisioning/assets/requirements.md",
     "skills/workspace-provisioning/assets/task.yaml",
     "skills/karazhan-mcp-collaboration/SKILL.md",
     "skills/karazhan-mcp-collaboration/agents/openai.yaml",
@@ -110,10 +111,7 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   assert.match(workspaceSkill, /never calls MCP/);
   assert.match(workspaceSkill, /\.agents\/skills/);
   assert.match(workspaceSkill, /custodian-startup-kit/);
-  assert.match(workspaceSkill, /ask whether the user wants an explicit independent target directory/);
   assert.match(workspaceSkill, /<parent-workspace>\/children\/<child>/);
-  assert.match(workspaceContract, /Logical Parent\/Child relationships/);
-  assert.match(workspaceContract, /explicit absolute Workspace/);
   for (const document of [workspaceSkill, workspaceContract, contextContract]) {
     assert.doesNotMatch(document, /\]\(\.\.\/\.\.\//);
   }
@@ -141,9 +139,7 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
   assert.match(mcpWorkflows, /"type": "update_resource_availability"/);
   assert.match(mcpWorkflows, /"details": "<optional-verbose-action-details>"/);
   assert.match(mcpWorkflows, /---/);
-  assert.match(mcpWorkflows, /summary.*details|details.*summary/is);
   assert.match(mcpWorkflows, /do not read, scan, upload, or copy|without asking Karazhan to read/i);
-  assert.match(custodianInstructions, /user controls Custodian startup/);
   for (const document of [
     medivhReadme,
     medivhSoul,

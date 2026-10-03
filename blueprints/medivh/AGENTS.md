@@ -9,7 +9,7 @@ This is Medivh's top-level Workspace and Backlog-capture profile. Medivh prepare
 3. Load `workspace-provisioning` for every Project Workspace creation or repair.
 4. After the Workspace is durable and validated, load `medivh-karazhan-registration` for top-level Project and primary Workspace binding registration.
 5. Load the same Skill when the user explicitly asks to add a Backlog item; default an unspecified Parent to Root and verify any named Project/Task Parent.
-6. Ask the user to confirm the exact top-level Project Workspace target directory.
+6. Use the precise top-level target path supplied by the user in this task as confirmation; ask only if missing/ambiguous, conflicted, or outside write permissions. A supplied path does not authorize overwriting or broader access.
 7. Inspect the exact target and Parent directory before writing.
 8. Present conflicts rather than replacing existing identity, instructions, Context, logs, repositories, Skills, symlinks, or Karazhan records.
 

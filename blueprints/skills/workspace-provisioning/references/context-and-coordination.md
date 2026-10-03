@@ -27,9 +27,11 @@ Create `context/index.md` from [`../assets/context-index.md`](../assets/context-
 - each direct Child Workspace, Context, and index path;
 - this Workspace's coordination location;
 - required reading order and sources of truth;
-- applicable input owners, adopted versions, recoverable locations, and change-check entry points, including relevant ancestor constraints;
+- applicable input owners, roles (constraint, target fact, reference, historical), scope/status (adopted, pending confirmation, reference only), adopted versions, recoverable locations, and change-check entry points, including relevant ancestor constraints;
 - a locator for the latest complete handoff in the local log, or `None` on initial creation;
 - explicit safety and sensitivity boundaries.
+
+Register only inputs affecting current decisions. A reference project model can guide structure comparisons; current project facts establish the target baseline. Recoverable provenance does not make a source applicable. Reference/history does not automatically create requirements; record adopted structures/rules, scope, and basis once in the local log.
 
 Use resolved absolute paths for explicit cross-Workspace references. Human-readable labels are helpful but never replace stable IDs.
 
@@ -68,6 +70,8 @@ An overview is not a live session list and cannot prove completion. A Custodian 
 ## Downward changes and checkpoints
 
 Check explicitly listed upstream entry points at startup/recovery, phase or milestone transitions, before consuming a dependency, and before final delivery. This also applies to a leaf Child without local coordination. A reference must identify both the adopted content version and where to discover new versions or decisions; pinning a version alone cannot reveal a withdrawal.
+
+If no relevant change is found, no repeated application record or index edit is needed. Index edits are limited to navigation, adopted-version changes, and complete handoff pointers.
 
 The owner publishes the new constraint version and a decision. Each Child assesses its impact, completes required rework, and logs the actual application result, adopted version, evidence, and remaining work. Then it updates its index. Until application is complete, retain the prior adopted reference and log the pending transition; an invalidated baseline cannot be used for affected work. A compatible update may be deferred only with an explicit reason while the old baseline remains allowed.
 
@@ -120,7 +124,7 @@ A/ADOPT-001: adopted after verification under existing authority;
 
 ## Complete handoff and recovery
 
-At milestones and deliberate handoffs, append a complete record with a stable ID and update only its locator in the index. For example:
+Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID and update its locator in the index. Test passes and small fixes need only new facts in ordinary log entries; a phase delivery ending work for later review/recovery needs a complete handoff. Ordinary progress does not require one MCP write per entry; synchronize at meaningful user-facing progress points. For example:
 
 ```text
 H-003: requirements r2, A scope r3 (recoverable references in index);

@@ -30,9 +30,13 @@ A Workspace lets a Custodian continue working without Karazhan, Medivh, or a liv
 
 `coordination/` is needed only when the work owns direct Children. `repos/` is needed only for development work. Do not create empty structure merely for symmetry.
 
+## Child creation gate
+
+Create a Child Workspace only when work needs an independent owner, acceptance, recovery, or an explicit parallel boundary. Explain the boundary and benefit before splitting, and do not automatically create an unauthorized Child. Search, design, coding, and testing steps stay in the current task; an independently accepted deliverable with its own recovery needs is suitable for a Child.
+
 ## Target placement
 
-Before creating a top-level Project Workspace, obtain the user's confirmation of its exact target directory. Before creating a Child, ask whether the user wants an explicit independent target directory. If the user confirms one, the Child may live anywhere inside the separately authorized filesystem boundary; record explicit absolute Workspace, Context, and index paths in both sides' `context/index.md`. If the user does not choose an independent directory, use `<parent-workspace>/children/<child>` as the fallback.
+A precise path supplied by the user in the current task satisfies target confirmation; do not ask again for an already explicit independent-directory choice. Ask only when the path is missing or ambiguous, contents conflict, or write permission is insufficient. A supplied path authorizes neither overwriting content nor broader filesystem access. For a Child with no expressed layout choice, ask whether the user wants an explicit independent target directory; use that path when supplied, otherwise fall back to `<parent-workspace>/children/<child>`. For a non-nested Child, record explicit absolute Workspace, Context, and index paths in both sides' `context/index.md`.
 
 Logical Parent/Child relationships are defined by stable Work IDs and the two indexes, not by physical nesting. A logical relationship never grants write access to an external target. Inspect the target and its filesystem Parent separately from the logical Parent Workspace, and stop on existing identity, ownership, content, or symlink conflicts.
 
@@ -56,15 +60,19 @@ For every new independent Custodian Workspace, create a short `context/requireme
 
 `AGENTS.md` owns working rules and safety boundaries; its goal/acceptance sections refer to requirements or explicitly label source-version summaries. `context/index.md` owns navigation and adopted-input references. Reading order is not override precedence. Report inconsistencies to the relevant owner and pause only affected work; do not silently resolve conflicting instructions by choosing the last file read.
 
+Describe the current phase in requirements: delivery, necessary verification/completion, and excluded work. When the user explicitly changes goal, scope, or acceptance, issue a new requirements version with its authorization record; ordinary implementation choices, progress, and test results do not trigger a revision. Deliver once phase conditions are met; new findings remain follow-up candidates unless they block acceptance.
+
 Retain recoverable versions of requirements when they become shared inputs, following [context-and-coordination.md](context-and-coordination.md). Ordinary drafts need no release infrastructure. Existing Workspaces remain under their original contracts; no automatic field removal, history rewrite, or migration is authorized.
 
 ## Instructions and log
 
 Compose `AGENTS.md` using [`../assets/custodian-AGENTS.md`](../assets/custodian-AGENTS.md) as shared instruction material plus references to requirements and the specific repositories, validation procedure, and safety boundaries. It is not an immutable file to copy over existing instructions. `CLAUDE.md` may be a symlink to the resulting file when required by the local convention.
 
+Prefer the repository's existing validation guide. If none exists, add a short validation section to generated `AGENTS.md`: execution directory, verified environment and preparation commands, minimum validation command, and conditions for expanding checks. Keep existing required project checks. Reuse a result only when it identifies the actual content version, environment, command, and coverage and still covers acceptance. Rerun when relevant code, tests, dependencies, configuration, or external conditions change, or existing evidence is insufficient. A log saying only “passed” is insufficient; record evidence in the existing log, without a separate report for each check.
+
 `agent_log.md` is append-only. Each milestone records what changed, the result, evidence, next step, and blocker. It is the durable handoff between independent sessions and the input to later Karazhan synchronization.
 
-At milestones and deliberate handoffs, append a complete handoff with a stable record ID: adopted requirement/constraint versions, applied decisions, artifact releases and confirmations, unresolved issues, pending proposals, next action, and evidence. Update only the locator in the index. Ordinary progress entries need not repeat this snapshot.
+Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete handoff with a stable record ID: adopted requirement/constraint versions, applied decisions, artifact releases and confirmations, unresolved issues, pending proposals, next action, and evidence. Update the handoff locator then; otherwise update the index only for navigation or adopted-version changes. Passing a test or completing a small fix is ordinary progress: append only new facts, without a full snapshot. Phase delivery that ends work for later review/recovery requires a complete handoff. Synchronize MCP at progress points meaningful to the user, not after every log entry.
 
 On recovery, read the latest complete handoff plus all later entries, check upstream changes, and verify actual artifacts and unfinished operations. If the pointer is missing or stale, find the latest complete record in this Workspace's log; if none exists, reconstruct from available local evidence and record uncertainty. A crash may leave changed files without a corresponding log entry; do not infer completion or blindly repeat side effects. See [context-and-coordination.md](context-and-coordination.md) for record examples.
 

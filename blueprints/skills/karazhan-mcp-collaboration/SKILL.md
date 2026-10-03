@@ -34,6 +34,8 @@ ResourceBinding writes register locators only; they do not read, scan, upload, o
 
 For Action log authoring and MCP field mapping, follow the summary/details convention in the workflow reference. Recent-step projections intentionally show only the summary.
 
+Synchronize ordinary progress at points meaningful to the user, rather than after every local log entry. Preserve file-first evidence and query-after-write for every actual MCP mutation. Child Workspace creation requires an authorized independent owner, acceptance, recovery, or explicit parallel boundary; ordinary implementation steps remain in the current Workspace.
+
 ## Safety
 
 Use stable idempotency keys, expected revisions, and minimum explicit commands. Query after writes. On conflict, preserve both observations and surface them; never rewrite local evidence merely to match the UI. Never send credentials or raw sensitive Context through MCP.

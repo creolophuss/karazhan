@@ -44,12 +44,14 @@ Remove this section when the Project or Task has no direct Children.
 
 ## Applicable inputs
 
-| Owner Work ID | Purpose | Adopted version and recoverable location | Change-check entry point |
-| --- | --- | --- | --- |
+| Owner Work ID | Purpose | Source role | Applicable scope and adoption status | Adopted version and recoverable location | Change-check entry point |
+| --- | --- | --- | --- | --- | --- |
+
+Register only sources affecting current decisions. Source roles are constraint, target fact, reference, or historical; statuses are adopted, pending confirmation, or reference only. For example, a reference project model is reference only for comparing structure; current project facts are adopted target facts for the local baseline. Traceable origin does not establish task applicability. Reference or historical material cannot automatically become requirements; record the specific adopted structure/rule, scope, and basis once in the log.
 
 For example: owner UUID, product scope, `r2` at an absolute retained-file path, and that owner's explicitly permitted decisions path. A Git reference needs a readable repository, full commit, and file path. Include applicable ancestor constraints explicitly; do not traverse all ancestors or copy their text. Use `Pending` for unavailable/unconfirmed inputs, not an adopted version.
 
-Record adoption/application evidence in `agent_log.md`, then update this table. While application is incomplete, retain the last adopted reference and record the transition in the log; do not keep using an invalidated baseline. The table is navigation, not a second execution history.
+Record adoption/application evidence in `agent_log.md`, then update this table when adoption changes. Update the index only when navigation, adopted versions, or the complete handoff pointer changes. Upstream checks with no relevant change require no repeated application record or index edit. While application is incomplete, retain the last adopted reference and record the transition in the log; do not keep using an invalidated baseline. The table is navigation, not a second execution history.
 
 ## Latest complete handoff
 

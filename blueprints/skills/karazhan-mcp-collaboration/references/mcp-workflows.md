@@ -22,6 +22,8 @@ Never use a successful MCP write to compensate for a missing local result. Never
 
 This is not a license to keep two silently divergent current states. When sources disagree, preserve both observations, show provenance, and ask for reconciliation.
 
+Synchronize ordinary progress at points meaningful to the user, rather than after every local log entry. Preserve file-first evidence and query-after-write for every actual MCP mutation. Child Workspace creation requires an authorized independent owner, acceptance, recovery, or explicit parallel boundary; ordinary implementation steps remain in the current Workspace.
+
 ## Read before write
 
 Before synchronizing:
