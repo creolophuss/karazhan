@@ -8,6 +8,19 @@ Use `context/requirements.md` as the authority for the local goal, scope, and ac
 
 When the user explicitly changes goal, scope, or acceptance, update requirements with a new version and cite the authorization record. Implementation choices, progress, and test results alone do not trigger a revision. Use its current phase delivery, necessary checks/completion, and exclusions to stop and deliver; new findings are follow-up candidates unless they block acceptance. Reference/history cannot automatically become requirements: record the adopted rule/structure, specific scope, and basis once; register only decision-relevant sources with their role and adoption status in the existing index.
 
+## Communication and reporting
+
+In user conversations, reports, and other prose, follow ASD-STE100 Simplified Technical English or its principles. Apply the same principles to Chinese; use the English controlled vocabulary when applicable. Claim full standard compliance only when checked against the standard.
+
+- Use short sentences and familiar, precise words. Express one main idea per sentence.
+- Prefer active voice. State who does what; make conditions and references clear.
+- Use one consistent term for each concept. Explain necessary technical terms on first use.
+- Lead with the result or required action. Give procedures in execution order, with one action per step.
+- Remove redundant wording, vague qualifiers, idioms, and decorative language. Keep facts, assumptions, and uncertainty distinct.
+- Preserve exact code, commands, paths, identifiers, quotations, and required technical terms. Do not omit necessary information to shorten text.
+
+Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.html).
+
 ## Startup and recovery
 
 1. Read `.workbench/task.yaml` for stable identity and resource locations.
@@ -19,7 +32,7 @@ When the user explicitly changes goal, scope, or acceptance, update requirements
 
 ## Context checkpoints
 
-At startup/recovery, phase or milestone transitions, dependency consumption, and final delivery, check only the upstream entry points listed in the index. If no relevant change is found, no repeated application record or index edit is needed. Record each applicable decision's owner/ID, adopted version, actual result, evidence, and remaining rework/blocker in your own log, then update adopted-input references. Reading is not application. For a pending change, preserve the prior adopted reference and record the transition; do not continue affected work on an incompatible or withdrawn baseline.
+At startup/recovery, actual phase transitions, dependency consumption, known constraint changes, and phase delivery, check only the upstream entry points listed in the index. Ordinary progress synchronization does not trigger this checkpoint. If no relevant change is found, no repeated application record or index edit is needed. Record each applicable decision's owner/ID, adopted version, actual result, evidence, and remaining rework/blocker in your own log, then update adopted-input references. Reading is not application. For a pending change, preserve the prior adopted reference and record the transition; do not continue affected work on an incompatible or withdrawn baseline.
 
 When owning Children, expose relevant changes through local coordination with references to the original owner/version. Provide applicable ancestor references when creating a Child. Track each direct Child's application evidence separately from your own and from descendant evidence; missing evidence means pending confirmation. New dependencies discovered through the declared Parent entry point still require identity and access-boundary checks.
 
@@ -37,11 +50,14 @@ Before consuming a release, check its files, current validity, and the Parent's 
 
 Prefer the repository's existing validation guide. If none exists, add a short validation section to generated `AGENTS.md`: execution directory, verified environment and preparation commands, minimum validation command, and conditions for expanding checks. Keep existing required project checks. Reuse a result only when it identifies the actual content version, environment, command, and coverage and still covers acceptance. Rerun when relevant code, tests, dependencies, configuration, or external conditions change, or existing evidence is insufficient. A log saying only “passed” is insufficient; record evidence in the existing log, without a separate report for each check.
 
+
+Generate a separate report or hash manifest only for a user request, a concrete consumer, or an applicable delivery/verification contract. Record the actual code baseline when validating; check repository state at recovery, relevant code changes, and code delivery. Reuse unchanged evidence instead of rechecking repositories or recomputing hashes around an ordinary synchronization. Preserve required validation, shared-release/consumption, and installation checks.
+
 ## Working rule
 
-Write code, documents, status, validation, and evidence to this Workspace first. Append new facts to `agent_log.md`. At progress points meaningful to the user (not every log entry), synchronize the user-facing subset through Karazhan MCP with revisions and stable idempotency keys. The current wire contract uses `actor_type: task_agent` for Custodian writes; that identifier does not define another Agent role.
+Write code, documents, status, validation, and evidence to this Workspace first. Append new facts to `agent_log.md`. Merge ordinary steps into synchronization at reviewable deliveries, major milestones, and blocker/condition changes affecting execution or requiring user attention. Reading, individual tests, small fixes, and conversational replies stay local; there is no timed-update obligation. Use the ordinary-progress workflow in the Workspace-local MCP Skill with revisions, stable idempotency keys, and independent verification. The current wire contract uses `actor_type: task_agent` for Custodian writes; that identifier does not define another Agent role.
 
-Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID, adopted baselines, applied decisions, release/confirmation references, unresolved issues, pending proposals, next action, and evidence. Update the handoff locator then; index edits otherwise require navigation or adopted-version changes. Test passes and small fixes are ordinary progress and append only new facts; phase delivery ending work for later review/recovery needs a complete handoff. Do not overwrite old log entries or create an independent current-status file.
+Determine actual phases from requirements; an ordinary reply or synchronization does not create a phase boundary. Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID, adopted baselines, applied decisions, release/confirmation references, unresolved issues, pending proposals, next action, and evidence. Update the handoff locator then; index edits otherwise require navigation or adopted-version changes. Test passes and small fixes are ordinary progress and append only new facts; phase delivery ending work for later review/recovery needs a complete handoff. Do not overwrite old log entries or create an independent current-status file.
 
 If this Custodian owns an unregistered top-level Project, create it in Karazhan using the existing local `work.id`. When a Parent Custodian creates a Child Project or Task, generate and persist the Child's local identity and Workspace before the corresponding idempotent MCP creation. Creating a node never starts a Child Custodian; the user controls Custodian startup.
 

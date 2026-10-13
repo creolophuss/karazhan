@@ -141,6 +141,96 @@ fn medivh_context(idempotency_key: &str, project_id: &str) -> CommandContext {
 }
 
 #[test]
+fn ordinary_progress_verifies_recent_events_and_recovers_older_replays() {
+    let directory = tempfile::tempdir().expect("temporary product data");
+    let mut client = McpClient::start(&directory.path().join("karazhan.sqlite3"));
+    client.command(Command::CreateProject(CreateProjectCommand {
+        id: PROJECT_ID.into(),
+        parent_id: SYSTEM_ROOT_ID.into(),
+        key: "ordinary-progress".into(),
+        title: "Ordinary progress".into(),
+        summary: None,
+        position: 0,
+        slug: None,
+        context_path: None,
+        context: context("ordinary:create"),
+    }));
+    let before = client.query(Query::GetProject {
+        id: PROJECT_ID.into(),
+    });
+    let revision = before["payload"]["revision"].as_i64().unwrap();
+    let event_id = "44000000-0000-0000-0000-000000000020";
+    let command = Command::AppendProgress(AppendProgressCommand {
+        node_id: PROJECT_ID.into(),
+        event_id: event_id.into(),
+        event_kind: ProgressEventKind::Progress,
+        summary: "Reviewable result retained locally".into(),
+        details: None,
+        step_status: None,
+        expected_revision: revision,
+        context: context("ordinary:progress"),
+    });
+    let written = client.command(command.clone());
+    assert_eq!(written["payload"]["replayed"], false);
+    assert_eq!(written["payload"]["revision"], revision);
+    let recent = client.query(Query::RecentProgress {
+        node_id: PROJECT_ID.into(),
+        limit: 10,
+    });
+    let event = &recent["payload"][0];
+    assert_eq!(event["id"], event_id);
+    assert_eq!(event["subject_node_id"], PROJECT_ID);
+    assert_eq!(event["event_type"], "progress");
+    assert_eq!(event["summary"], "Reviewable result retained locally");
+    assert_eq!(event["details"], Value::Null);
+    assert_eq!(event["step_status"], Value::Null);
+    assert_eq!(event["actor_type"], "task_agent");
+    assert_eq!(event["actor_ref"], "custodian:workflow-test");
+    assert_eq!(event["channel"], "mcp");
+
+    for index in 21..=31 {
+        client.command(Command::AppendProgress(AppendProgressCommand {
+            node_id: PROJECT_ID.into(),
+            event_id: format!("44000000-0000-0000-0000-{index:012}"),
+            event_kind: ProgressEventKind::Progress,
+            summary: format!("Later milestone {index}"),
+            details: None,
+            step_status: None,
+            expected_revision: revision,
+            context: context(&format!("ordinary:later:{index}")),
+        }));
+    }
+    let recent = client.query(Query::RecentProgress {
+        node_id: PROJECT_ID.into(),
+        limit: 10,
+    });
+    let events = recent["payload"].as_array().unwrap();
+    assert_eq!(events.len(), 10);
+    assert!(events.iter().all(|event| event["id"] != event_id));
+    let timeline = client.query(Query::ProgressTimeline {
+        node_id: PROJECT_ID.into(),
+    });
+    let matches: Vec<_> = timeline["payload"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["id"] == event_id)
+        .collect();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0], event);
+    let replay = client.command(command);
+    assert_eq!(replay["payload"]["replayed"], true);
+    assert_eq!(replay["payload"]["revision"], revision);
+    assert_eq!(
+        client.query(Query::GetProject {
+            id: PROJECT_ID.into(),
+        }),
+        before
+    );
+    client.finish();
+}
+
+#[test]
 fn medivh_can_register_a_top_level_project_and_capture_requested_backlog() {
     let directory = tempfile::tempdir().expect("temporary product data");
     let mut client = McpClient::start(&directory.path().join("karazhan.sqlite3"));

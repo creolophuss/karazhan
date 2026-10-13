@@ -69,7 +69,7 @@ An overview is not a live session list and cannot prove completion. A Custodian 
 
 ## Downward changes and checkpoints
 
-Check explicitly listed upstream entry points at startup/recovery, phase or milestone transitions, before consuming a dependency, and before final delivery. This also applies to a leaf Child without local coordination. A reference must identify both the adopted content version and where to discover new versions or decisions; pinning a version alone cannot reveal a withdrawal.
+Check explicitly listed upstream entry points at startup/recovery, actual phase transitions, before consuming a dependency, on known constraint changes, and before phase delivery. Ordinary synchronization does not trigger this checkpoint. This also applies to a leaf Child without local coordination. A reference must identify both the adopted content version and where to discover new versions or decisions; pinning a version alone cannot reveal a withdrawal.
 
 If no relevant change is found, no repeated application record or index edit is needed. Index edits are limited to navigation, adopted-version changes, and complete handoff pointers.
 
@@ -124,7 +124,7 @@ A/ADOPT-001: adopted after verification under existing authority;
 
 ## Complete handoff and recovery
 
-Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID and update its locator in the index. Test passes and small fixes need only new facts in ordinary log entries; a phase delivery ending work for later review/recovery needs a complete handoff. Ordinary progress does not require one MCP write per entry; synchronize at meaningful user-facing progress points. For example:
+Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID and update its locator in the index. Test passes and small fixes need only new facts in ordinary log entries; a phase delivery ending work for later review/recovery needs a complete handoff. Determine actual phase boundaries from requirements, not from a conversational reply or synchronization. Merge ordinary steps into updates for reviewable deliveries, major milestones, or blockers/conditions affecting execution or requiring user attention; there is no timed-update obligation. Use the Workspace-local MCP Skill for the compact ordinary-progress workflow. Synchronization alone requires no report, hash manifest, index change, or repository/upstream recheck. For example:
 
 ```text
 H-003: requirements r2, A scope r3 (recoverable references in index);

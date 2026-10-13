@@ -14,6 +14,19 @@ Karazhan 是本地优先的 Agent 工作可视化与同步产品。开始产品�
 
 新需求必须先进入并经用户确认于 `docs/product-requirements.md`，再实施代码。旧 Child Context、historical requirement delta、delivery summary、coordination 和外层 shared-context 只作历史证据，不能覆盖或扩展正式需求。
 
+## 沟通与文本输出
+
+与用户对话、编写报告及其他文本时，遵循 ASD-STE100 简化技术英语或其思想。中文采用相同原则；英文在适用时使用受控词汇。只有按标准核对后，才能声明完全符合标准。
+
+- 用短句和常见、准确的词。每句表达一个主要意思。
+- 优先使用主动语态。明确谁做什么，写清条件和指代。
+- 同一概念使用同一术语。首次使用必要的技术术语时解释含义。
+- 先写结果或所需行动。操作步骤按执行顺序排列，每步写一个行动。
+- 删除重复表达、模糊修饰、习语和装饰性语言。区分事实、假设和不确定性。
+- 保留代码、命令、路径、标识符、引用和必要技术术语的准确形式。不要为缩短文本而遗漏必要信息。
+
+参考：[ASD-STE100 官方说明](https://www.asd-ste100.org/STE_faq.html)。
+
 ## 工程边界
 
 - React 只通过集中 TypeScript client 调用 Tauri；Tauri IPC、HTTP 与 MCP 复用 shared Rust application/domain core。

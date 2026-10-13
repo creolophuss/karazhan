@@ -22,13 +22,13 @@ Never use a successful MCP write to compensate for a missing local result. Never
 
 This is not a license to keep two silently divergent current states. When sources disagree, preserve both observations, show provenance, and ask for reconciliation.
 
-Synchronize ordinary progress at points meaningful to the user, rather than after every local log entry. Preserve file-first evidence and query-after-write for every actual MCP mutation. Child Workspace creation requires an authorized independent owner, acceptance, recovery, or explicit parallel boundary; ordinary implementation steps remain in the current Workspace.
+Ordinary progress uses the self-contained workflow in [SKILL.md](../SKILL.md#ordinary-progress). Registration and other mutations use the applicable sections below. Child Workspace creation requires an authorized independent owner, acceptance, recovery, or explicit parallel boundary; ordinary implementation steps remain in the current Workspace.
 
 ## Read before write
 
 Before synchronizing:
 
-1. read the complete new `agent_log.md` section and referenced evidence;
+1. identify the durable local fact being projected; reuse evidence already read and verified unless its content, inputs, or required coverage changed;
 2. resolve the stable node ID from `.workbench/task.yaml`;
 3. query the node and its current revision through `karazhan_query`;
 4. determine whether the source is a factual progress event, a Custodian proposal, or an explicit user decision;
@@ -42,7 +42,7 @@ Use `karazhan_command` with the shared contract. Supply the command's expected r
 
 The wire value `task_agent` represents the Custodian. It does not imply separate Agent roles for Project and Task work.
 
-After a successful write, query the result and record enough local evidence to explain what was synchronized. Do not place bearer tokens or secrets in logs or Context.
+After a successful write, independently query the affected result and append a short confirmation to the existing log. For progress, query `recent_progress` with limit 10 and match the event ID and sent fields; fall back to `progress_timeline` if absent. Return only the verification result to the model. Separate command/verification JSON files are optional when an actual consumer requires them. Do not place bearer tokens or secrets in logs or Context.
 
 ## Status semantics
 
@@ -54,10 +54,12 @@ After a successful write, query the result and record enough local evidence to e
 
 ## Failure and replay
 
-- Local write succeeds, MCP fails: retain the durable fact and retry later with the same idempotency identity.
+- Local write succeeds, MCP fails: retain the durable fact and exact pending request in the existing log; retry later without an automatic retry loop.
 - MCP succeeds, response is lost: query before retrying; identical replay must return the existing result.
 - Revision conflict: reread both sides, report the newer structured value and local source, and request reconciliation when intent is ambiguous.
 - Local write fails: do not publish a completion or evidence claim only to Karazhan.
+
+An identical retry includes the original expected revision, body, event ID, key, and provenance. Expected revision participates in the request digest; replacing it with a newly queried revision can cause IdempotencyConflict even when the text is unchanged. A known successful write with a failed verification remains verification-pending; verify it later instead of creating another event.
 
 There is no assumed offline queue. Retry is an explicit Custodian action based on durable files.
 
@@ -134,7 +136,7 @@ After durable progress is appended locally, write each Action log entry in two p
 
 The `---` line is an authoring delimiter, not stored content. Map the text before it to `summary` and the text after it to `details`. Keep `summary` short enough for Recent steps. Omit the delimiter and send `details: null` when the summary is sufficient. Never put credentials or raw sensitive Context in either field.
 
-Then query the current node revision and submit:
+For verbose progress only, query the current node revision, retain the exact request information in the existing log, and submit:
 
 ```json
 {
@@ -159,7 +161,7 @@ Then query the current node revision and submit:
 }
 ```
 
-Query the affected node or timeline after every command. Reuse the same event ID and idempotency key only for an identical retry.
+Query the affected result after every command. Ordinary progress defaults to `details: null` and uses the recent-10 verification described in SKILL.md. Reuse the same event ID and idempotency key only for an identical retry.
 
 A Custodian registers its already-persisted Workspace locator without asking Karazhan to read the directory:
 

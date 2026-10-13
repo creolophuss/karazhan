@@ -604,6 +604,26 @@ fn sibling_key_and_position_conflicts_leave_existing_order_intact() {
         .is_err()
     );
     assert_eq!(db.node_count(NodeKind::Project).unwrap(), 1);
+
+    let corrected = || {
+        node(
+            "10000000-0000-0000-0000-000000000003",
+            NodeKind::Project,
+            SYSTEM_ROOT_ID,
+            "other",
+            1,
+        )
+    };
+    let result = create(&mut db, corrected()).unwrap();
+    assert!(!result.replayed);
+    assert!(create(&mut db, corrected()).unwrap().replayed);
+    assert_eq!(db.node_count(NodeKind::Project).unwrap(), 2);
+    let mut changed = corrected();
+    changed.position = 2;
+    assert!(matches!(
+        create(&mut db, changed),
+        Err(DomainError::IdempotencyConflict)
+    ));
 }
 
 #[test]

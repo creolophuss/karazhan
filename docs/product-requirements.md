@@ -45,6 +45,8 @@ Karazhan 是同步与可视化控制面，不是 Agent 运行时或执行前置�
 
 Medivh 是用户的顶层 Workspace 与 Backlog 捕获管家。它按已确认目标创建 Project Workspace、稳定本地身份、Context 和必要 instructions。顶层 Workspace 持久化并验证后，Medivh 可以通过 Karazhan MCP 使用同一稳定 UUID 幂等创建或查询对应的顶层 Project，并登记、查询该 Project 的 primary Workspace binding；MCP 不可用时仍先保留完整本地 Workspace，之后以相同身份重试。用户明确要求记录 Backlog 时，Medivh 还可以生成稳定 UUID，并在系统 Root 或用户明确指定且经查询确认的 Project / Task 下新增、查询该 Backlog。Medivh 不创建 Child Project / Task，不维护 Today、progress、业务字段或生命周期，也不编辑、移动、Discard 或 Promote 已有 Backlog，不启动、调度或管理 Custodian。Workspace 准备与顶层登记结束后，由用户在该目录启动 Custodian。
 
+2026-10-03 用户要求合并已安装 Skill 的两条本地经验：Hermes harness 故障时先用配置中的同一 stdio companion 做只读核验，再按原权限/幂等/查询协议使用直接 stdio；明确返回 `sibling_position_conflict` 的顶层 Project 创建，在确认稳定 ID 不存在且位置不是用户指定时，允许记录后仅修正 position 重试一次，保留 ID、key、其他内容及幂等 key。丢失响应只允许查询后原样重放，其他冲突仍停止；不扩大 Medivh 的操作权限。
+
 阶段 3 不负责启动、恢复或调度 Medivh、Custodian 或其他 Agent session。
 
 ### 2.3 Custodian
@@ -69,6 +71,21 @@ Workspace 的逻辑 Parent/Child 关系不要求物理目录嵌套。用户在�
 - R08：保留角色、权限、必要文件、完整包和安装保护检查，减少非契约英文措辞断言。少量场景走查记录预期动作，至少覆盖需求改向、普通进度、明确路径、参考采用；不增加 Agent 评测平台或复杂文本匹配。模板测试只证明约束检查，不能证明真实 Agent 效率提升。
 
 R09 留作后续候选：限定依赖的 Parent 预授权可能减少 release 等待，也可能削弱版本对应的授权与质量控制。本次保留每个 release 的 Parent 确认，新版本不能继承旧确认；没有真实 case 的收益/风险证据前不推广预授权默认规则。未来试行须限定生产者、消费者、用途、允许变化、验证要求，范围、权限、关键约束或不兼容变化仍重新确认。
+
+### 2.5 同步精简与定点升级（2026-10-10 用户逐项确认）
+
+- 在可审阅成果交付、重大里程碑，以及影响执行或需要用户决策的关键阻塞/条件变化时合并同步；阅读、单次测试、小修复和普通回复只记本地，不设定时同步义务。
+- `summary` 复用本地短结论；`details` 默认空，按需补充证据路径、重要限制或待决策事项。独立报告、清单和哈希仅由用户要求、明确消费者或既有交付/核验协议触发，保留发布、依赖消费与安装保护所需检查。
+- 完整交接只用于实际阶段交付结束、责任移交、重要基线切换或主动停止并需恢复；普通同步不触发交接或索引修改。索引仅随导航、采用版本或完整交接指针变化更新。
+- 上游检查在恢复、实际阶段切换、新依赖消费、已知约束变化和阶段交付时进行；仓库状态和证据核验跟随实际验证、代码变化及交付。普通同步不重复触发这些检查。
+- 普通同步先查询当前 revision，在 `agent_log.md` 落盘可恢复的准确请求信息，再发送结构化 `append_progress`。不强制独立命令 JSON。写后使用 `recent_progress` 最近 10 条按事件 ID 核对，缺失时回退 `progress_timeline`；工具层仅输出核验结论。确认仅追加简短本地日志，不生成独立确认 JSON。
+- 请求恢复信息包含原始 revision、事件 ID、幂等 key、准确正文及其他实际请求字段。revision 也参与幂等匹配，重放不能换成新查询的 revision。响应丢失先回查，失败保留待同步事实，按既有冲突协议处理，不自动循环重试。普通同步不改变业务字段或用户验收状态。
+- 本次明确升级 `bug-fix` 与 `an existing Child Workspace` 两个已有 Workspace 的通用指令和完整 Custodian Skill 包；保留业务规则、身份、历史证据及其他 Skill。升级前检查基线和本地修改，保留升级前内容和可恢复包来源；其他 Workspace 仅提供显式路径升级流程。真实 Profile 安装、自动批量升级、提交与远程写不在本次范围。
+- 仅做相关协议、幂等/revision、蓝图、隔离安装和 Skill/试点完整性回归，不开展真实会话耗时对比或新建 Agent 评测平台。不改变 MCP 接口或数据库 schema。
+
+### 2.6 沟通与文本输出（2026-10-13 用户确认）
+
+仓库 AGENTS 与 Custodian 模板要求对话、报告及其他文本遵循 ASD-STE100 或其思想：短句、准确用词、统一术语、主动语态及有序步骤。中文采用相同原则；保留代码、命令、路径和引用的准确形式，完整标准合规须经核对。当前 Workspace 的相同规则已落盘；本次将规则纳入上述两个版本控制入口，不自动升级其他存量 Workspace。
 
 ## 3. 产品原则
 

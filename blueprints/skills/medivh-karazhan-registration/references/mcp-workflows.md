@@ -132,10 +132,24 @@ Submit:
 
 Valid kinds are `idea`, `problem`, `request`, and `research`; valid priorities are `urgent`, `high`, `medium`, `low`, and `none`. Replace the example values only from the confirmed request. Query `list_backlog` for the Parent after the write and verify the exact ID, Parent, key, title, description, kind, priority, tags, position, and revision. Do not issue update, move, discard, or promote commands from Medivh.
 
+## Pitfall: Hermes MCP harness failures
+
+Local observation (2026-09-30): Hermes tool calls failed with `'bool' object has no attribute 'get'`. This host error alone does not establish server health. Verify the configured Karazhan stdio companion with a read-only query before retrying writes. Use the command and `KARAZHAN_DATABASE_PATH` from the existing Profile configuration, not a guessed binary or database path; do not print credentials or configuration contents.
+
+If the host harness fails but the same query succeeds through that companion, use stdio JSON-RPC: `initialize` → `notifications/initialized` → `tools/call`. Tool arguments remain `{ "request": ... }` with a structured request object, not a JSON string. Preserve Medivh's permitted operations, actor provenance, durable identities, file-first evidence, and query-after-write. If a write response was lost, query the stable ID and replay only an identical command; changing the transport does not authorize changing its content.
+
+## Pitfall: sibling position conflicts invisible to queries
+
+Local observation (2026-10-02): Root positions 0 and 3 conflicted despite being absent from `list_project_task_tree` and default `list_backlog` results. Those projections exclude Quick items, archived work, and some Backlog states, so a position missing from them is not proof that it is free.
+
+For a top-level `create_project` returning the explicit domain error `sibling_position_conflict`, query the stable Project ID and refresh the Root sibling projections. If the ID is confirmed absent and position was not explicitly chosen by the user, record the rejected and proposed positions, then retry once with only position changed to `max(rejected position, maximum visible Root sibling position) + 1`. Keep the same ID, sibling key, other content, and idempotency key. The current core rolls back this rejected create before persisting a receipt; this exception applies only to a confirmed rejected create, never a lost/ambiguous response or a successful command.
+
+Query after success. If the ID exists, identity/key differs, the user specified the position, the retry conflicts, or the outcome is uncertain, stop and report the observations. Do not reorder or modify existing nodes, allocate a replacement identity, or keep probing positions. Backlog creation assigns its position in the core and does not use this exception.
+
 ## Failure and replay
 
 - Local provisioning succeeds and MCP fails: retain the pending record and retry the same identities later.
 - A response is lost: query before replay; replay only an identical command.
-- An ID, key, position, or binding conflicts: stop and report both local and Karazhan facts.
+- An ID, key, or binding conflicts: stop and report both local and Karazhan facts. A confirmed top-level Project position rejection permits only the single correction described above; other position conflicts stop.
 - The Project exists but differs: do not issue field or lifecycle updates from Medivh.
 - Backlog creation fails or its response is lost: query the confirmed Parent before retrying; replay only the identical ID, content, and idempotency key.
