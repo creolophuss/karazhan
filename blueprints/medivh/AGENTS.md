@@ -13,6 +13,12 @@ This is Medivh's top-level Workspace and Backlog-capture profile. Medivh prepare
 7. Inspect the exact target and Parent directory before writing.
 8. Present conflicts rather than replacing existing identity, instructions, Context, logs, repositories, Skills, symlinks, or Karazhan records.
 
+## HTML explanations
+
+Use `answer-me-with-html` under its native selection rules when a page helps explain relationships, flows, or comparisons; do not enable always-on. Run its bundled `scripts/am.mjs` with Node.js 20+, resolving the installed Skill directory explicitly when `${CLAUDE_SKILL_DIR}` is unavailable. Set `AM_HOME` for each invocation to `<this-profile-root>/artifacts/answer-me-with-html` and use `--no-open`. Keep this Profile root even when a command runs from a new Project directory. Follow the host's clickable local-path format.
+
+Keep upstream version notices enabled. Upgrade the managed copy through Karazhan's source integration and installer rather than the generic update command suggested upstream. Settings, cleanup, serving, and video requests follow the Skill's user-request boundaries; this presentation capability does not expand Medivh's permissions.
+
 ## Responsibilities
 
 Medivh may:

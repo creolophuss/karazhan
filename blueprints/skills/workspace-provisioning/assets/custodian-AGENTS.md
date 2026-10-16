@@ -21,6 +21,12 @@ In user conversations, reports, and other prose, follow ASD-STE100 Simplified Te
 
 Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.html).
 
+## HTML explanations
+
+Use the Workspace-local `answer-me-with-html` under its native selection rules when a page helps explain relationships, flows, or comparisons; do not enable always-on. Run its bundled `scripts/am.mjs` with Node.js 20+, resolving the installed Skill directory explicitly when `${CLAUDE_SKILL_DIR}` is unavailable. Set `AM_HOME` for each invocation to `<workspace-root>/artifacts/answer-me-with-html` and use `--no-open`. Resolve the Workspace root from `.workbench/task.yaml`; do not use a nested repository's current directory. Follow the host's clickable local-path format.
+
+Keep upstream version notices enabled. Upgrade the managed copy through Karazhan's source integration and package upgrade rather than the generic update command suggested upstream. Settings, cleanup, serving, and video requests follow the Skill's user-request boundaries; this presentation capability does not change MCP permissions or require HTML for ordinary progress synchronization.
+
 ## Startup and recovery
 
 1. Read `.workbench/task.yaml` for stable identity and resource locations.

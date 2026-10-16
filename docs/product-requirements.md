@@ -53,7 +53,7 @@ Medivh 是用户的顶层 Workspace 与 Backlog 捕获管家。它按已确认�
 
 Custodian 是统一负责 Project 或 Task Workspace 的 Agent 角色。Parent、Child 和 Sibling 只表示 Custodian Workspace 之间的关系，不是新的 Agent 类型。Custodian 先写自己的 Workspace 文件，再通过 MCP 注册或同步自己的 Project / Task、查询祖先结构与最近进展、创建 Child 节点、维护 Today 并提交交付。Custodian 报告完成只代表“已交付并等待评审”，不能自动把 Project / Task 设为 `done`。
 
-Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning` 与 `karazhan-mcp-collaboration`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 安装并使用 `workspace-provisioning` 与独立的窄权限 Karazhan Skill，不使用 Custodian 的通用 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
+Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning`、`karazhan-mcp-collaboration` 与 `answer-me-with-html`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 安装并使用 `workspace-provisioning` 与独立的窄权限 Karazhan Skill，不使用 Custodian 的通用 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
 
 Workspace 的逻辑 Parent/Child 关系不要求物理目录嵌套。用户在当前任务中给出的精确目标路径满足路径确认要求，已有明确的独立目录选择不重复询问。路径缺失、含糊、内容冲突或写权限不足时才进行必要询问；未表达 Child 布局选择时，仍须询问是否使用独立目录。指定路径不授权覆盖已有内容或扩大写权限。用户确认独立目录时，通过双方 `context/index.md` 中的稳定 Work ID 和显式绝对路径建立导航；用户不选择独立目录时，才回退到 `<parent-workspace>/children/<child>`。无论采用哪种布局，逻辑关系都不自动授予目标路径写权限。
 
@@ -86,6 +86,14 @@ R09 留作后续候选：限定依赖的 Parent 预授权可能减少 release �
 ### 2.6 沟通与文本输出（2026-10-13 用户确认）
 
 仓库 AGENTS 与 Custodian 模板要求对话、报告及其他文本遵循 ASD-STE100 或其思想：短句、准确用词、统一术语、主动语态及有序步骤。中文采用相同原则；保留代码、命令、路径和引用的准确形式，完整标准合规须经核对。当前 Workspace 的相同规则已落盘；本次将规则纳入上述两个版本控制入口，不自动升级其他存量 Workspace。
+
+### 2.7 HTML 回答 Skill（2026-10-16 用户确认）
+
+- 从指定本地仓库导入 answer-me-with-html 0.5.2（commit `3d519e63911c40254f2c92aa1473b572dfa1a4d7`）的完整 Skill、bundled CLI、参考文件及许可证，记录可恢复来源。保留上游内容，不安装全局 CLI 或额外运行时 npm 依赖；渲染要求 Node.js 20+。
+- Medivh 的 discoverable Skills 增加同名 Skill；Custodian 启动包包含三项 Skill，新顶层 Project 和 Child 复制完整包。两类角色的 MCP 权限保持。
+- 按原生规则选择可视化，不启用 always-on；调用所属 Skill 的 bundled CLI，默认 `--no-open`。按次设置 AM_HOME 为所属 Workspace 的 `artifacts/answer-me-with-html`，不随仓库 cwd 改变。Medivh 使用其 Profile 根目录；Custodian 使用 manifest 中的 Workspace 根目录。链接遵循宿主格式，不修改全局配置。
+- 保留上游版本提示；实际受管 Skill 更新通过 Karazhan 导入及安装器完成，不执行上游通用更新命令覆盖受管目标。清理、服务启动和视频遵守 Skill 的用户请求边界。
+- 测试通过后提交、普通推送，再运行组件安装器更新真实 Medivh 和启动包；仅定点升级当前 bug-fix 的指令及完整三项 Skill。保留业务规则、其他 Skill、记忆和会话；桌面 App 和其他存量 Workspace 不在范围内。
 
 ## 3. 产品原则
 

@@ -27,6 +27,12 @@ test("Medivh is top-level and Custodians own Project and Task work", async () =>
     "skills/medivh-karazhan-registration/SKILL.md",
     "skills/medivh-karazhan-registration/agents/openai.yaml",
     "skills/medivh-karazhan-registration/references/mcp-workflows.md",
+    "skills/answer-me-with-html/SKILL.md",
+    "skills/answer-me-with-html/scripts/am.mjs",
+    "skills/answer-me-with-html/references/settings.md",
+    "skills/answer-me-with-html/references/video.md",
+    "skills/answer-me-with-html/licenses/OFL-Bangers.txt",
+    "skills/answer-me-with-html/LICENSE",
   ];
 
   await Promise.all(required.map((file) => access(new URL(file, blueprintUrl))));

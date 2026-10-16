@@ -12,7 +12,8 @@ A Workspace lets a Custodian continue working without Karazhan, Medivh, or a liv
 │  └─ skills/
 │     ├─ PACKAGE.md
 │     ├─ workspace-provisioning/
-│     └─ karazhan-mcp-collaboration/
+│     ├─ karazhan-mcp-collaboration/
+│     └─ answer-me-with-html/
 ├─ AGENTS.md
 ├─ CLAUDE.md -> AGENTS.md
 ├─ agent_log.md
@@ -42,7 +43,7 @@ Logical Parent/Child relationships are defined by stable Work IDs and the two in
 
 ## Custodian Skill package
 
-Every new independent Custodian Workspace contains complete project-local `.agents/skills/workspace-provisioning/` and `.agents/skills/karazhan-mcp-collaboration/` directories. Copy the whole versioned package, including each Skill's `SKILL.md`, `agents/`, `references/`, and `assets/` where present, plus `.agents/skills/PACKAGE.md` evidence that identifies the source repository, full commit, source state, and content digest.
+Every new independent Custodian Workspace contains complete project-local `.agents/skills/workspace-provisioning/`, `.agents/skills/karazhan-mcp-collaboration/`, and `.agents/skills/answer-me-with-html/` directories. Copy the whole versioned package, including each Skill's `SKILL.md`, `agents/`, `references/`, and `assets/` where present, plus `.agents/skills/PACKAGE.md` evidence that identifies the source repository, full commit, source state, and content digest.
 
 Medivh obtains the package from `$HERMES_HOME/packages/custodian-startup-kit/.agents/skills/`, which is deliberately outside its discoverable `skills/` directory. An authorized Parent Custodian uses its own Workspace-local `.agents/skills/` as the source for a Child. Never substitute a user-global Skill installation, a mutable symlink, or an undocumented source checkout path. Existing Workspace packages are updated only through a separately reviewed operation; provisioning does not silently replace them.
 

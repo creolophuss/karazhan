@@ -41,11 +41,11 @@ Use the files in [`assets/`](assets/) as starting material for generated Workspa
 
 Prefer the repository's existing validation guide. If none exists, add a short validation section to generated `AGENTS.md`: execution directory, verified environment and preparation commands, minimum validation command, and conditions for expanding checks. Keep existing required project checks. Reuse a result only when it identifies the actual content version, environment, command, and coverage and still covers acceptance. Rerun when relevant code, tests, dependencies, configuration, or external conditions change, or existing evidence is insufficient. A log saying only “passed” is insufficient; record evidence in the existing log, without a separate report for each check.
 
-Install the complete Custodian startup package into the target Workspace's `.agents/skills/`. A Medivh installation copies from `$HERMES_HOME/packages/custodian-startup-kit/.agents/skills/`; an authorized Parent Custodian copies from its own Workspace `.agents/skills/`. The source must contain complete `workspace-provisioning` and `karazhan-mcp-collaboration` directories plus `PACKAGE.md` with recoverable version evidence. Stop if the source is missing, incomplete, locally conflicted, or not tied to a recorded version; do not fall back to user-global Skills or an undocumented repository-relative path.
+Install the complete Custodian startup package into the target Workspace's `.agents/skills/`. A Medivh installation copies from `$HERMES_HOME/packages/custodian-startup-kit/.agents/skills/`; an authorized Parent Custodian copies from its own Workspace `.agents/skills/`. The source must contain complete `workspace-provisioning`, `karazhan-mcp-collaboration`, and `answer-me-with-html` directories plus `PACKAGE.md` with recoverable version evidence. Stop if the source is missing, incomplete, locally conflicted, or not tied to a recorded version; do not fall back to user-global Skills or an undocumented repository-relative path.
 
 Create only what the work needs:
 
-1. `.agents/skills/` with complete `workspace-provisioning` and `karazhan-mcp-collaboration` directories plus `PACKAGE.md` package-version evidence;
+1. `.agents/skills/` with complete `workspace-provisioning`, `karazhan-mcp-collaboration`, and `answer-me-with-html` directories plus `PACKAGE.md` package-version evidence;
 2. `.workbench/task.yaml` with stable local identity;
 3. `AGENTS.md` appropriate to the owning Custodian;
 4. `CLAUDE.md -> AGENTS.md` only when the local convention requires it;

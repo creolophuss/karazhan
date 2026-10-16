@@ -432,6 +432,8 @@ cp -R "$SCRIPT_DIR/blueprints/skills/workspace-provisioning" \
   "$PACKAGE_SOURCE/.agents/skills/workspace-provisioning"
 cp -R "$SCRIPT_DIR/blueprints/skills/karazhan-mcp-collaboration" \
   "$PACKAGE_SOURCE/.agents/skills/karazhan-mcp-collaboration"
+cp -R "$SCRIPT_DIR/blueprints/skills/answer-me-with-html" \
+  "$PACKAGE_SOURCE/.agents/skills/answer-me-with-html"
 
 SKILLS_DIGEST=$(tree_digest "$PACKAGE_SOURCE/.agents/skills")
 if git -C "$SCRIPT_DIR" diff --quiet -- blueprints/skills && \
@@ -448,7 +450,7 @@ cat > "$PACKAGE_SOURCE/.agents/skills/PACKAGE.md" <<EOF
 - Source commit: $SOURCE_COMMIT
 - Source state: $SOURCE_STATE
 - Skills digest (SHA-256): $SKILLS_DIGEST
-- Installed Skills: workspace-provisioning, karazhan-mcp-collaboration
+- Installed Skills: workspace-provisioning, karazhan-mcp-collaboration, answer-me-with-html
 EOF
 
 PROFILE_LITERAL=$(shell_quote "$PROFILE_DIR")
@@ -517,6 +519,7 @@ PROFILE_SOUL_SOURCE="$SCRIPT_DIR/blueprints/medivh/SOUL.md"
 PROFILE_AGENTS_SOURCE="$SCRIPT_DIR/blueprints/medivh/AGENTS.md"
 PROFILE_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/workspace-provisioning"
 PROFILE_MCP_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/medivh-karazhan-registration"
+PROFILE_HTML_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/answer-me-with-html"
 PROFILE_PACKAGE_TARGET="$PROFILE_DIR/packages/custodian-startup-kit"
 
 if [ "$SKIP_APP" != 1 ]; then
@@ -528,6 +531,7 @@ preflight_managed_path "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_
 preflight_managed_path "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
 preflight_managed_path "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
 preflight_managed_path "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
+preflight_managed_path "$PROFILE_HTML_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/answer-me-with-html" "$BASELINE_ROOT/medivh/skills/answer-me-with-html"
 preflight_managed_path "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
 
 if [ "$SKIP_APP" != 1 ]; then
@@ -544,6 +548,7 @@ install_versioned_path "Medivh SOUL" "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.m
 install_versioned_path "Medivh AGENTS" "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
 install_versioned_path "Medivh provisioning Skill" "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
 install_versioned_path "Medivh MCP Skill" "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
+install_versioned_path "Medivh HTML Skill" "$PROFILE_HTML_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/answer-me-with-html" "$BASELINE_ROOT/medivh/skills/answer-me-with-html"
 install_versioned_path "Custodian startup kit" "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
 
 if [ "$MCP_COMMAND_CONFIG_MISSING" -eq 1 ]; then

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmod,
+  cp,
   mkdtemp,
   mkdir,
   readdir,
@@ -252,6 +253,60 @@ fi
       "packages/custodian-startup-kit/.agents/skills/PACKAGE.md",
     ),
   );
+  const htmlFiles = [
+    "SKILL.md",
+    "scripts/am.mjs",
+    "references/settings.md",
+    "references/video.md",
+    "licenses/OFL-Bangers.txt",
+    "LICENSE",
+  ];
+  const medivhHtml = path.join(profileDirectory, "skills/karazhan/answer-me-with-html");
+  const kitSkills = path.join(profileDirectory, "packages/custodian-startup-kit/.agents/skills");
+  const projectSkills = path.join(root, "project/.agents/skills");
+  const childSkills = path.join(root, "project/children/child/.agents/skills");
+  const browserLog = path.join(root, "browser.log");
+  await writeFile(path.join(mockBin, "open"), '#!/bin/sh\nprintf "opened\\n" >> "$KARAZHAN_TEST_BROWSER_LOG"\n');
+  await chmod(path.join(mockBin, "open"), 0o755);
+  await cp(kitSkills, projectSkills, { recursive: true });
+  await cp(projectSkills, childSkills, { recursive: true });
+  for (const [index, installed] of [
+    medivhHtml,
+    path.join(kitSkills, "answer-me-with-html"),
+    path.join(projectSkills, "answer-me-with-html"),
+    path.join(childSkills, "answer-me-with-html"),
+  ].entries()) {
+    for (const file of htmlFiles) {
+      assert.deepEqual(
+        await readFile(path.join(installed, file)),
+        await readFile(path.join(repositoryRoot, "blueprints/skills/answer-me-with-html", file)),
+      );
+    }
+    const amHome = path.join(root, `render-${index}/artifacts/answer-me-with-html`);
+    const page = path.join(amHome, "pages/smoke.html");
+    const render = spawnSync(process.execPath, [
+      path.join(installed, "scripts/am.mjs"), "render", "-", "--no-open", "-o", page,
+    ], {
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${mockBin}:${process.env.PATH}`,
+        AM_HOME: amHome,
+        AM_NO_UPDATE_CHECK: "1",
+        KARAZHAN_TEST_BROWSER_LOG: browserLog,
+      },
+      input: "## A Flow\n```flow\nMedivh -> Workspace\n```\n",
+      encoding: "utf8",
+    });
+    assert.equal(render.status, 0, render.stderr);
+    assert.match(await readFile(page, "utf8"), /<svg/);
+  }
+  await assert.rejects(stat(browserLog));
+  assert.match(
+    await readFile(path.join(kitSkills, "PACKAGE.md"), "utf8"),
+    /Installed Skills: workspace-provisioning, karazhan-mcp-collaboration, answer-me-with-html/,
+  );
+  await assert.rejects(stat(path.join(profileDirectory, "skills/karazhan/karazhan-mcp-collaboration")));
   await stat(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"));
   await stat(path.join(appSource, "Contents/MacOS/Karazhan"));
   await stat(path.join(binDirectory, "karazhan-mcp"));
@@ -322,6 +377,20 @@ fi
     await readFile(path.join(stateDirectory, "baseline/app/Karazhan.app.version"), "utf8"),
     "0.2.0\n",
   );
+
+  const htmlInstructions = path.join(medivhHtml, "SKILL.md");
+  const originalHtml = await readFile(htmlInstructions, "utf8");
+  await writeFile(htmlInstructions, `${originalHtml}\nLocal customization\n`);
+  env.KARAZHAN_INSTALL_VERSION = "0.4.0";
+  const htmlConflict = run();
+  assert.notEqual(htmlConflict.status, 0);
+  assert.match(htmlConflict.stderr, /locally modified/);
+  assert.match(await readFile(htmlInstructions, "utf8"), /Local customization/);
+  assert.equal(
+    await readFile(path.join(stateDirectory, "baseline/medivh/AGENTS.md.version"), "utf8"),
+    "0.3.0\n",
+  );
+  await writeFile(htmlInstructions, originalHtml);
 
   env.KARAZHAN_INSTALL_VERSION = "0.2.0";
   const downgrade = run();
