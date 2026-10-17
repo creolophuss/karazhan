@@ -16,6 +16,8 @@ The current foundation contains a shared Rust core, the complete SQLite storage 
 
 The complete instructions for desktop startup, verification, database locations, safe backup/restore boundaries, MCP host configuration, and HTTP bearer-token semantics are in [`docs/development-and-operations.md`](docs/development-and-operations.md).
 
+The on-demand [Context notification adapter](docs/development-and-operations.md#context-notification-adapter) supports self-registration and Workspace-local startup/resume Hooks, plus previewed, user-approved sends through Codex queue or Claude/cmux. Run `node scripts/context-notify.mjs --help`. It needs no running Karazhan App, database, or resident service. Hermes is not enabled.
+
 The acceptance matrix in [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md) records the delivery-time evidence. Search, Settings/Import, and real Stage 2.5 cutover were subsequently deferred by the user and are not current MVP work.
 
 The complete Backlog workflow is delivered. Release/distribution remains optional future work; the older proposed-Child list in [`docs/deferred-work-handoff.md`](docs/deferred-work-handoff.md) is retained as delivery-time history rather than current scheduling authority.

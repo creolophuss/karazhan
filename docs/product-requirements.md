@@ -107,6 +107,37 @@ R09 留作后续候选：限定依赖的 Parent 预授权可能减少 release �
 - 统一仓库指令、Custodian 模板、Context 恢复说明和同步 Skill。保留角色、权限、上游/依赖检查、必要验证和安装保护。不修改 MCP 接口或数据库，不新增定时检查、独立台账或报告要求，不改历史日志。
 - 验证使用现有蓝图、隔离安装测试和受影响 Skill 的格式校验；用静态场景走查核对普通补充、单句修订、重复展示、关键变化、恢复、实际交付和同步冲突。走查不证明真实 Agent 效率，不新增措辞匹配测试或 Agent 评测平台。
 
+### 2.9 Context 更新与通知设计（2026-10-17 用户确认）
+
+设计阶段只交付[设计草案](context-update-notification-design.md)和本地 HTML 选型页。用户选择方案后，再确认实现需求并开始开发；实现范围见随后确认的 §2.9.1。
+
+- 已确认同一个 cmux 内、Agent 对话交互、用户主动或 Agent 提案后选择内容和对象；对象包括 Parent、Sibling、Child，独立选择本地文件、自身 Context 与 Karazhan 同步。接收方自行评估影响，不要求回执；改变目标、约束或共享基线时仍按现有规则确认。
+- 比较原生 cmux＋文件、本地持久投递服务、外部消息系统及适配机制；区分已确认能力、用户本机证据与待实验行为。用户批注取消回执、通知 ID、去重与自建恢复流程；保存仅指本地文件，Karazhan 读写由单独选择触发。Codex、Claude Code、Hermes 的 Queue 或同类入口、Hook 与 cmux 组合均需验证；先验证原生能力，按实测缺口再考虑服务。A、B、C 均未选定。
+- 本次不开发消息能力、不安装服务、不修改 hooks、不启动会话、不实发通知，不改变 API/schema、其他 Workspace、发布确认或用户验收权限。既有文件所有权与 Context 正文不进入产品数据库的边界继续有效。
+
+用户随后要求“验证原生能力”，并要求按最新 DeepSeek 配置重测 Claude。当时仅授权独立测试会话、临时配置及测试消息。[验证报告](context-notification-native-validation.md)区分真实模型、本地测试服务、当前失败组合和未测项；随后用户选择 B，见下一节。
+
+#### 2.9.1 第一版实现范围（2026-10-17 用户选择 B）
+
+用户对“按需运行的本地适配器，统一发送入口和会话登记，接入 Claude、Codex，Hermes 验证后接入”的范围回答 Yes。此前设计与实验阶段的开发限制由本节在此范围内替代。
+
+- 实现仓库内可直接运行的 Node.js 命令。使用显式指定的本地 JSON 映射文件，登记 Work ID、Workspace 路径、Agent 类型和精确会话地址。一个 Work 只选一个接收会话；更换时显式替换。登记不启动或恢复 Agent，不改变业务状态。
+- 支持登记、列出、移除与发送。发送指定来源、具体接收 Work 和用户选择的正文文件。默认只预览；Agent 展示内容和接收地址并取得用户确认后，才使用确认参数发送。不同对象需不同正文时分别预览和发送。不支持的 Agent 或未知对象须在发送前报错。
+- Codex 使用 `codex queue --thread <UUID> --message <text>`；Claude 使用 `cmux agent message <workspace-or-surface-UUID>`。使用精确 UUID，避免标题或前缀匹配。消息包含来源 Work 和 Workspace。映射只是人工登记的路由信息，不证明在线或真实会话归属；登记时须核对目标，换会话后重新登记。
+- 全部接收对象先校验，再调用原生工具；分别报告原生工具接受或调用失败。工具接受不代表已读或采用。部分发送失败不回滚已接受的发送，不自动重试。Hermes 第一版不支持。
+- 不新增回执、通知 ID、去重、消息数据库、常驻服务、自动发现或自动重试。适配器不修改 Context、不遍历 Workspace、不读写 Karazhan。Agent 继续负责内容选择、自身文件更新与单独选择的 Karazhan 同步。
+- 验收覆盖：未确认不调用通道；选择的正文与对象准确；正确的 CLI 参数与来源信息；精确地址替换和移除保护；未知/不支持对象发送前失败；部分失败与无重试；正文不进入映射或普通发送结果；使用隔离命令替身验证进程边界，并复用原生接收实测。不自动安装到 Profile 或其他 Workspace，不提交推送。
+
+#### 2.9.2 自助登记（2026-10-17 用户要求）
+
+用户要求“实现自助登记”。在 §2.9.1 上增加 `self-register` 与 Workspace 本地 Hook 接入；不再要求用户手工填写 Work 或 session UUID。
+
+- 从当前目录或指定目录向上找到最近的 `.workbench/task.yaml`，只读取该文件的 `work.id`。不遍历其他 Workspace。Codex 使用 `SessionStart` 输入的 `session_id`，会话内自助调用可使用 `CODEX_THREAD_ID`。Claude 使用 `CMUX_SURFACE_ID`，缺失时不猜测目标。
+- `install-hooks` 合并 Workspace 的 `.codex/hooks.json` 和 `.claude/settings.local.json`，保留既有 Hook 和设置，重复运行不重复追加。Hook 针对启动、恢复、clear 和 fork；compact 不切换接收会话。Hook 输入 cwd 必须属于配置的 Workspace；不把正文、transcript 或其他 Hook 字段写入登记。
+- 启动/恢复时刷新当前 Work 的一个接收地址，最近一次成功登记生效。并行登记不同 Work 不丢数据。原生信任检查保留，不自动修改信任状态。缺少身份、地址或有效配置时明确报错，不生成猜测登记。
+- 默认共享路由文件为 `$XDG_STATE_HOME/karazhan/context-notify/sessions.json`，未设置时使用 `~/.local/state/karazhan/context-notify/sessions.json`；允许 `--registry` 或 `KARAZHAN_CONTEXT_REGISTRY` 显式覆盖。只保存路由信息，不保存消息或回执。写锁只保护登记修改，不重试消息发送。
+- 本轮可为当前 bug-fix Workspace 接入本地 Hook 并登记当前 Codex 会话；不改用户级 Profile、其他 Workspace 或 cmux 生产 Hook。用隔离配置验证两类原生启动与恢复入口，保留原有通知确认门槛；不向业务会话发测试通知。
+
 ## 3. 产品原则
 
 1. **Today 优先**：打开应用默认进入 Today，让用户以最少切换恢复当天工作。
