@@ -19,6 +19,8 @@ A top-level Project Custodian starts from a provisioned Workspace whose `.workbe
 
 ## Ongoing work
 
+Reuse local context for analysis, edits, and validation without querying Karazhan. Query only for an actual registration, progress, field, Today, Child, or ResourceBinding operation, an explicit user query, or conflict/pending-write recovery. Local recovery alone does not require a remote query. Keep the revision and verification queries required by the applicable operation.
+
 For ordinary progress, use the workflow below. Read the applicable sections of [references/mcp-workflows.md](references/mcp-workflows.md) for registration, Child creation, fields, Today, ResourceBindings, verbose Action log authoring, or conflict recovery. A Custodian may:
 
 - query its Project/Task, current revision, Children, Today membership, and progress;
@@ -34,9 +36,11 @@ ResourceBinding writes register locators only; they do not read, scan, upload, o
 
 ## Ordinary progress
 
-Synchronize a reviewable delivery, major milestone, or a blocker/condition change that affects execution or needs user attention. Merge ordinary steps into that update. Reading, individual tests, small fixes, and conversational replies stay local; there is no timed-update obligation.
+Synchronize the first complete result that meets the current explicit delivery conditions, actual phase deliveries, major milestones, and blocker/condition changes that affect execution or need user attention. A draft, ordinary revision, wording change, or repeat display does not qualify as a new delivery. A reply ending does not end a phase. Merge ordinary steps into the next meaningful update; there is no timed-update obligation.
 
-1. Reuse the durable local conclusion and stable `work.id`. Query `get_project` or `get_task` for the current revision.
+Decide whether synchronization is due before entering the steps below. Reuse the durable local conclusion; do not reread the task records just to prepare a reply. Merge ordinary analysis, edits, small fixes, and test results into the local log at actual delivery or a deliberate stop that needs recovery. Preserve critical authorization, execution-affecting decisions, blockers, and pending external operations promptly; reference existing authoritative content and evidence without repeating it.
+
+1. Reuse the durable local conclusion and known stable `work.id`. Query `get_project` or `get_task` for the current revision only for this actual synchronization. Do not substitute a cached revision.
 2. Before sending, retain enough information in the same `agent_log.md` to reconstruct the exact request: node, stable event ID/key, event kind, original expected revision, exact summary/details, step status, and actor/ref/channel. Reuse already recorded text; a compact metadata entry is sufficient. No separate command JSON is required.
 3. Send a structured `{ "request": ... }` object through `karazhan_command` with `type: append_progress`, `actor_type: task_agent`, and `channel: mcp`. Use the short local conclusion as `summary`; default `details` and `step_status` to null. Add details only for useful evidence locators, material limits, or decisions needed.
 4. Independently query `{ "request": { "type": "recent_progress", "node_id": "<work.id>", "limit": 10 } }`. Match the event ID, node, kind, summary/details, step status, and provenance. If absent, query `progress_timeline` for that node. Filter tool output to the verification result rather than printing history. If still absent or mismatched, record verification pending/conflict rather than success.

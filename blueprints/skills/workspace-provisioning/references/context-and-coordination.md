@@ -44,7 +44,7 @@ Filesystem provisioning uses these mechanisms in order:
 
 At each filesystem hop, verify stable identity using `.workbench/task.yaml` and cross-check the index. Instructions or directory names alone do not establish identity. Never turn upward discovery into a scan of the home directory. Do not follow an untrusted symlink outside allowed roots.
 
-If index and layout disagree, do not guess. Report both observations and ask the owning Parent Custodian or user to reconcile them before cross-Workspace writes. A Custodian may separately cross-check Karazhan through the MCP collaboration skill; Medivh may not.
+If index and layout disagree, do not guess. Report both observations and ask the owning Parent Custodian or user to reconcile them before cross-Workspace writes. A Custodian may query Karazhan for this conflict under the MCP collaboration skill; routine local discovery needs no remote cross-check. Medivh may not use the Custodian MCP skill.
 
 ## Sibling discovery
 
@@ -124,7 +124,9 @@ A/ADOPT-001: adopted after verification under existing authority;
 
 ## Complete handoff and recovery
 
-Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID and update its locator in the index. Test passes and small fixes need only new facts in ordinary log entries; a phase delivery ending work for later review/recovery needs a complete handoff. Determine actual phase boundaries from requirements, not from a conversational reply or synchronization. Merge ordinary steps into updates for reviewable deliveries, major milestones, or blockers/conditions affecting execution or requiring user attention; there is no timed-update obligation. Use the Workspace-local MCP Skill for the compact ordinary-progress workflow. Synchronization alone requires no report, hash manifest, index change, or repository/upstream recheck. For example:
+Complete handoffs are limited to phase acceptance, responsibility transfer, deliberate stopping of work that needs later recovery, or completion of an important baseline switch. Append a complete record with a stable ID and update its locator in the index. Merge ordinary analysis, edits, small fixes, and test results into a log record at actual delivery or a deliberate stop that needs recovery. Preserve critical authorization, execution-affecting decisions, blockers, and pending external operations promptly. Reference their authoritative content and evidence without repeating it. A phase delivery ending work for later review/recovery needs a complete handoff. Determine actual phase boundaries from requirements, not from a conversational reply, draft, or synchronization.
+
+Synchronize the first complete result that meets the current explicit delivery conditions, actual phase deliveries, major milestones, or blockers/conditions affecting execution or requiring user attention. Ordinary revisions, wording changes, and repeat displays do not qualify. Merge them into the next meaningful update; there is no timed-update obligation. Use the Workspace-local MCP Skill for the compact ordinary-progress workflow. Synchronization alone requires no report, hash manifest, index change, or repository/upstream recheck. For example:
 
 ```text
 H-003: requirements r2, A scope r3 (recoverable references in index);
@@ -135,6 +137,8 @@ H-003: requirements r2, A scope r3 (recoverable references in index);
 ```
 
 Read the latest complete record and all later entries, including any later complete handoff, then check upstream changes and actual artifacts/unfinished operations. If a pointer is missing or stale, search only the local log; with no complete record, reconstruct from available evidence and state uncertainty. A crash may leave files changed without a log entry: do not assume the last log proves current content or blindly repeat side effects. Append corrections and recovery results; do not rewrite history. Ordinary progress entries need not repeat the full snapshot, and no independent current-status file is needed.
+
+Use that recovery sequence at first startup or after context loss/interruption. A normal user reply does not trigger recovery. Reuse context during continuous work; for known external changes, missing information, or conflicts, reread only affected sources. Actual phase, dependency-consumption, and upstream checkpoints still apply. Local recovery alone does not require a Karazhan query. Query only for an actual remote operation, an explicit user query, or conflict/pending-write recovery under the MCP Skill.
 
 ## Phase 2.5 compatibility
 

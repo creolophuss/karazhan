@@ -26,15 +26,17 @@ Ordinary progress uses the self-contained workflow in [SKILL.md](../SKILL.md#ord
 
 ## Read before write
 
+Enter this sequence only for an actual synchronization under the delivery rules in [SKILL.md](../SKILL.md#ordinary-progress), or use the applicable workflow for another authorized remote operation. Ordinary analysis, edits, validation, and replies use local context without querying Karazhan.
+
 Before synchronizing:
 
 1. identify the durable local fact being projected; reuse evidence already read and verified unless its content, inputs, or required coverage changed;
-2. resolve the stable node ID from `.workbench/task.yaml`;
+2. reuse the stable node ID already resolved from `.workbench/task.yaml`;
 3. query the node and its current revision through `karazhan_query`;
 4. determine whether the source is a factual progress event, a Custodian proposal, or an explicit user decision;
 5. choose the minimum command rather than rewriting an entire object.
 
-For relationship discovery, start with `context/index.md`, then the trusted local `children/` hierarchy, and use Karazhan MCP as the structured cross-check. If those sources disagree, report the discrepancy instead of guessing.
+For relationship discovery, use the known local index and trusted Workspace paths. Query Karazhan only for the relationship needed by an actual remote operation, an explicit user query, or conflict/pending-write recovery; local discovery does not require a routine remote cross-check. If sources disagree, preserve and report the discrepancy instead of guessing.
 
 ## Write safely
 
