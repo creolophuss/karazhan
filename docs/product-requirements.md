@@ -1,787 +1,171 @@
-# Karazhan（Agent Workbench 阶段 3）产品需求
+# Product and integration reference
 
-> 初次定稿：2026-09-21
-> 最近修订：2026-10-17
-> 状态：用户已确认定稿；阶段 3 唯一事实来源
-> 目标读者：用户、产品设计 Child、TDD / 开发 Child
-> 用途：作为阶段 3 后续设计、TDD、实现与验收的唯一事实来源
+This is the repository's product requirement authority. It combines the product model, current capabilities, Agent collaboration rules, and advanced integration notes. Confirm changed requirements here before implementation. See [the English README](../README.md) or [中文 README](../README.zh-CN.md) for installation and basic use.
 
-## 0. 文档说明
+## Purpose and scope
 
-这份文档重新整理了阶段 3 立项需求、产品原型评审、运行形态 Spike、数据模型复审以及阶段 2.5 真实数据 dry-run 的最终结论。它是自洽文档：后续 Child 不需要阅读旧需求或 coordination 才能理解产品。
+Karazhan helps one user track work across local Agents, Projects, and Tasks on macOS. The desktop presents structured state and progress. Agents work from durable local Workspace files and synchronize selected structured information through MCP. Karazhan is not their runtime or a prerequisite for local work.
 
-自 2026-09-21 用户确认之时起：
+The current desktop provides Today, Projects & Tasks, Backlog, and Archive. Search, Settings/Import, legacy cutover, cloud sync, multiple users, an embedded Assistant, and Agent lifecycle orchestration are outside current scope. There is no Context index, automatic document summary, vector store, or file-content mirror in the database. Existing legacy import APIs are available for isolated integration tests; they are not a supported production migration procedure.
 
-- 本文替换 2026-09-19 初始需求、旧原型说明、早期数据模型和与其冲突的 coordination 记录，成为阶段 3 后续设计、TDD、实现与验收的唯一事实来源。
-- 旧材料只作为历史证据，不再补充或改变本文需求；后续需求变化必须先修订本文并由用户确认。
-- 本文只规定阶段 3 的产品事实和验收结果，不要求 TDD Child 沿用现有 SQL、文件拆分或内部函数命名。
-- 文中“必须”表示 MVP 验收条件；“应”表示正常情况下必须满足、只有明确理由才可延期；“可以”表示允许但不要求。
+## Work model
 
-## 1. 产品概述
+Project, Task, and Backlog form one Work Tree under an immutable system Root. The UI hides Root.
 
-Karazhan 是 Agent Workbench 阶段 3 的正式产品与工程名称。它是一个运行在用户 MacBook 上的单用户、本地优先个人项目管理产品，服务的不是传统团队工单流程，而是“一个用户通过 Medivh 管理顶层 Workspace，并与多个 Custodian 共同推进长期工作”的日常场景。
+| Parent | Allowed direct children |
+| --- | --- |
+| Root | Project, Task, Backlog |
+| Project | Project, Task, Backlog |
+| Task | Task, Backlog |
+| Backlog | None |
 
-产品应让用户快速回答五个问题：
+Each non-Root node has a stable UUID, one Parent, a sibling-unique key, and an explicit sibling position. Moves must preserve parent-type rules and prevent cycles. A node's kind does not change in place. An optional Project slug is unique across Projects. A Project can exist before its Workspace or Context path is known.
 
-1. 今天真正要推进哪些 Project 或 Task？
-2. 每件工作现在处于什么状态，是否被阻塞？
-3. 一个复杂工作被拆成了哪些可执行的 Child Task？
-4. Agent 最近做了什么，交付了什么，证据在哪里？
-5. 从一个 Agent / Task 切换到另一个时，需要先看哪些 Context、进展和证据？
+A Child Task is an ordinary Task whose Parent is another Task. There is no separate TodoItem or unique next-action field. Use Child Tasks and their order to express multiple actions.
 
-Karazhan 的核心目标是降低用户每天在多个 Agent、Project 和 Task 之间频繁 context switch 的认知成本。Agent 必须先把进度、状态、步骤、阻塞、结论和证据写入自己的 Workspace 文件，再通过 MCP 把需要用户关注的结构化信息同步到 Karazhan；桌面界面负责聚合信息，帮助用户快速聚焦和决策。
+Project and Task status values are `planned`, `ready`, `in_progress`, `pending`, `review`, `done`, and `cancelled`. Completion requires user acceptance or an explicitly authorized reviewer. Natural-language logs do not change status. Blocker text is independent of status. Priorities are `urgent`, `high`, `medium`, `low`, and `none`.
 
-Karazhan 是同步与可视化控制面，不是 Agent 运行时或执行前置依赖。Agent Workspace 中的代码、文档、结果和日志是 Agent 执行事实的第一手来源。Agent 在 Karazhan 或 MCP 暂时不可用时仍可继续工作；连接恢复后以已落盘文件为依据，通过明确的幂等命令补同步。阶段 3 不承诺离线消息队列或自动补传。
+Backlog kinds are `idea`, `problem`, `request`, and `research`. Lifecycle values are `captured`, `considering`, `ready`, `promoted`, and `discarded`. Promotion atomically creates a new Project or Task, marks the source promoted, and retains the source-to-target link. Discard preserves the original record.
 
-阶段 3 的核心结果是：SQLite 保存供用户规划、聚焦和操作的 Project、Task、Backlog 与 Today 结构化视图；本地 Workspace、Context 和 `agent_log.md` 继续保留 Agent 的第一手执行事实。Karazhan 不以数据库替代这些文件，而是通过路径绑定、来源记录和 MCP 同步与它们协作。
+## Desktop behavior
 
-## 2. 用户与协作者
+### Today
 
-### 2.1 用户
+Today is an explicitly selected, manually ordered projection of Projects and Tasks. Membership and ordering do not change Work Tree positions, priority, or status. Backlog cannot enter Today. Removing a normal item from Today does not delete its Work Tree node.
 
-产品当前只有一个本机用户。用户负责决定今天做什么、调整结构和优先级、处理 blocker、评审 Agent 交付，以及确认迁移和数据恢复操作。
+A Project card includes recursive Child Projects and Tasks that do not have their own Today card. An independently selected descendant and its subtree stop appearing in the ancestor card. Project progress aggregates only the descendants still represented by that card and identifies the source.
 
-### 2.2 Medivh
+Recent steps shows business progress, deliveries, and manual Steps. Field audits and Today membership/order events remain in the complete timeline without filling Recent steps. Compact views show short summaries. The full Action log also shows optional details. Quick items are ordinary Tasks with a quick-item flag, shown in Today and omitted from Projects & Tasks; their checkbox changes the same Task status.
 
-Medivh 是用户的顶层 Workspace 与 Backlog 捕获管家。它按已确认目标创建 Project Workspace、稳定本地身份、Context 和必要 instructions。顶层 Workspace 持久化并验证后，Medivh 可以通过 Karazhan MCP 使用同一稳定 UUID 幂等创建或查询对应的顶层 Project，并登记、查询该 Project 的 primary Workspace binding；MCP 不可用时仍先保留完整本地 Workspace，之后以相同身份重试。用户明确要求记录 Backlog 时，Medivh 还可以生成稳定 UUID，并在系统 Root 或用户明确指定且经查询确认的 Project / Task 下新增、查询该 Backlog。Medivh 不创建 Child Project / Task，不维护 Today、progress、业务字段或生命周期，也不编辑、移动、Discard 或 Promote 已有 Backlog，不启动、调度或管理 Custodian。Workspace 准备与顶层登记结束后，由用户在该目录启动 Custodian。
+### Projects & Tasks
 
-2026-10-03 用户要求合并已安装 Skill 的两条本地经验：Hermes harness 故障时先用配置中的同一 stdio companion 做只读核验，再按原权限/幂等/查询协议使用直接 stdio；明确返回 `sibling_position_conflict` 的顶层 Project 创建，在确认稳定 ID 不存在且位置不是用户指定时，允许记录后仅修正 position 重试一次，保留 ID、key、其他内容及幂等 key。丢失响应只允许查询后原样重放，其他冲突仍停止；不扩大 Medivh 的操作权限。
+Support recursive display, expand/collapse, legal moves, sibling ordering, status and priority changes, manual Steps, Today membership, and recursive archive. Projects can contain Child Projects and Tasks; Tasks can contain Child Tasks. The central client must prevent older asynchronous responses from replacing newer filter results. Visible Today and Projects & Tasks refresh after external changes and on window focus/visibility, without overlapping requests or resetting expansion state.
 
-阶段 3 不负责启动、恢复或调度 Medivh、Custodian 或其他 Agent session。
+### Backlog and Archive
 
-### 2.3 Custodian
+Backlog supports capture, inline Edit with Save/Cancel, Move, Promote, Discard, Parent/kind/priority/tag filters, and ordered drag operations. Parent selectors and labels show the hierarchy. Cross-Parent drag updates Parent and position atomically. Promoted and discarded entries are hidden from the active view; lifecycle status remains in the domain model.
 
-Custodian 是统一负责 Project 或 Task Workspace 的 Agent 角色。Parent、Child 和 Sibling 只表示 Custodian Workspace 之间的关系，不是新的 Agent 类型。Custodian 先写自己的 Workspace 文件，再通过 MCP 注册或同步自己的 Project / Task、查询祖先结构与最近进展、创建 Child 节点、维护 Today 并提交交付。Custodian 报告完成只代表“已交付并等待评审”，不能自动把 Project / Task 设为 `done`。
+Archive recursively archives a Project or Task subtree and removes its Today membership. Reopen restores the selected subtree and required archived ancestors, without recreating old Today membership. Permanent deletion requires an already archived subtree and explicit confirmation. Root cannot be archived or deleted. Archived Parents cannot receive new children.
 
-Custodian 不依赖 Codex、Kimi 或其他运行时的用户级 Profile 才能获得角色能力。每个新 Project / Task Workspace 应携带项目级 `.agents/skills/` 启动包，完整包含 `workspace-provisioning`、`karazhan-mcp-collaboration` 与 `answer-me-with-html`；用户从 Workspace 根目录启动所选 Agent，使身份、instructions、Skill、Context 和本地事实随 Workspace 一起发现与恢复。Medivh 安装并使用 `workspace-provisioning` 与独立的窄权限 Karazhan Skill，不使用 Custodian 的通用 MCP Skill。具体打包与落地计划见 [`custodian-runtime-packaging-plan.md`](custodian-runtime-packaging-plan.md)。
+### External resources
 
-Workspace 的逻辑 Parent/Child 关系不要求物理目录嵌套。用户在当前任务中给出的精确目标路径满足路径确认要求，已有明确的独立目录选择不重复询问。路径缺失、含糊、内容冲突或写权限不足时才进行必要询问；未表达 Child 布局选择时，仍须询问是否使用独立目录。指定路径不授权覆盖已有内容或扩大写权限。用户确认独立目录时，通过双方 `context/index.md` 中的稳定 Work ID 和显式绝对路径建立导航；用户不选择独立目录时，才回退到 `<parent-workspace>/children/<child>`。无论采用哪种布局，逻辑关系都不自动授予目标路径写权限。
+ResourceBinding stores locators for Project/Task Workspaces, repositories, manifests, logs, sessions, URLs, files, or directories. Root and Backlog cannot own bindings. Shared paths do not merge nodes. Missing paths change availability rather than deleting work. Binding identity fields remain fixed after creation; availability updates use revisions.
 
-### 2.4 脚手架执行约定（2026-10-03 用户清单 R01—R08）
+The product stores an optional Context directory path on a Project. A Task resolves the nearest ancestor Project's Context path. An independent Task has no implicit product Context. A Task Workspace can still own a local `context/` directory under the filesystem contract. Karazhan does not scan, index, copy, or reconstruct its contents.
 
-仅更新脚手架及直接相关规则、测试，不自动迁移或升级已有 Workspace，不修改真实 Profile，不改变 manifest 或 MCP 接口。
+Open in Zed accepts a node ID. Rust resolves an available primary Workspace binding, checks the canonical directory against allowed roots, and invokes fixed macOS Launch Services arguments. The frontend cannot submit an arbitrary path or shell command. A valid directory in the user's home must open. Show complete errors without covering adjacent controls. Zed's optional CLI is not required.
 
-- R01：在现有 `requirements.md` 中表达当前阶段交付、必要验证/完成条件及不处理事项。用户明确改变目标、范围或验收时更新需求版本并引用授权；实现决策、进度、测试结果不触发版本更新。满足阶段条件后交付，新发现留作候选，除非阻碍当前验收。
-- R02：现有 Applicable inputs 表区分约束、目标事实、参考、历史，注明适用范围和已采用/待确认/仅参考状态。参考项目模型用于结构比较，当前项目事实用于目标基线；来源可追溯不等于当前适用。参考/历史不能自动形成需求，采用其结构或规则须一次记录具体范围及依据。只登记影响决策的来源，不增设台账。
-- R03：完整交接仅用于阶段验收、责任移交、主动结束需后续恢复的工作、重要基线切换完成。测试通过和小修复合并到实际交付或需恢复的停工记录；阶段交付结束当前工作需完整交接。索引仅在导航、采用版本或交接指针改变时更新。保留上游检查，没有相关变化不重复写应用记录。恢复读取最近完整交接及其后日志；文件先落盘，MCP 在对用户有意义的进展节点同步。日志和同步触发条件以 §2.8 的细化规则为准。
-- R04：生成 AGENTS 优先引用仓库验证说明，缺少时写明执行目录、已验证环境及准备命令、最小验证命令、扩大范围条件。只有能对应实际内容版本、环境、命令、覆盖范围且足以覆盖验收的结果可复用；相关代码/测试/依赖/配置/外部条件变化或覆盖不足须重跑。“通过”一词不足以复用，不取消既有必要检查，不增设逐次独立报告。
-- R05：Skill 明确最小必读章节，身份、路径、权限、冲突保护、文件及恢复契约必读；上游应用/变更、共享 release/消费、Child 协调/传播、旧 Workspace 兼容/迁移边界按对应条件读取。完整本地 Skill 包继续保留。
-- R06：路径确认遵循上段规则，明确路径无需重复确认；未知 Child 布局仍询问，冲突和权限不足不视为已有授权。
-- R07：仅需要独立负责人、独立验收、独立恢复或明确并行边界时创建 Child，拆分前说明边界与收益，不自动创建未授权 Child。搜索、设计、编码、测试步骤留在当前任务；有独立验收及恢复需求的交付适合拆分。不新增任务类型或审批流程。
-- R08：保留角色、权限、必要文件、完整包和安装保护检查，减少非契约英文措辞断言。少量场景走查记录预期动作，至少覆盖需求改向、普通进度、明确路径、参考采用；不增加 Agent 评测平台或复杂文本匹配。模板测试只证明约束检查，不能证明真实 Agent 效率提升。
+## Architecture and data contract
 
-R09 留作后续候选：限定依赖的 Parent 预授权可能减少 release 等待，也可能削弱版本对应的授权与质量控制。本次保留每个 release 的 Parent 确认，新版本不能继承旧确认；没有真实 case 的收益/风险证据前不推广预授权默认规则。未来试行须限定生产者、消费者、用途、允许变化、验证要求，范围、权限、关键约束或不兼容变化仍重新确认。
+React/TypeScript uses the central client to invoke thin Tauri IPC. Tauri, loopback HTTP, and stdio MCP dispatch to the same Rust application/domain core and SQLite database. No adapter duplicates business rules. React does not access the filesystem, shell, or database directly.
 
-### 2.5 同步精简与定点升级（2026-10-10 用户逐项确认）
+Commands preserve stable IDs, optimistic revisions, command-specific idempotency keys, actor/channel provenance, timestamps, and structured error codes. Related field changes and ProgressEvents commit in one transaction. Clients must handle conflicts by code, inspect current state, and retry only according to the shared contract. Do not interpret a log line as an authoritative state update.
 
-- 在可审阅成果交付、重大里程碑，以及影响执行或需要用户决策的关键阻塞/条件变化时合并同步；阅读、单次测试、小修复和普通回复留在本地，不逐次写日志，不设定时同步义务。具体触发条件见 §2.8。
-- `summary` 复用本地短结论；`details` 默认空，按需补充证据路径、重要限制或待决策事项。独立报告、清单和哈希仅由用户要求、明确消费者或既有交付/核验协议触发，保留发布、依赖消费与安装保护所需检查。
-- 完整交接只用于实际阶段交付结束、责任移交、重要基线切换或主动停止并需恢复；普通同步不触发交接或索引修改。索引仅随导航、采用版本或完整交接指针变化更新。
-- 上游检查在恢复、实际阶段切换、新依赖消费、已知约束变化和阶段交付时进行；仓库状态和证据核验跟随实际验证、代码变化及交付。普通同步不重复触发这些检查。
-- 普通同步先查询当前 revision，在 `agent_log.md` 落盘可恢复的准确请求信息，再发送结构化 `append_progress`。不强制独立命令 JSON。写后使用 `recent_progress` 最近 10 条按事件 ID 核对，缺失时回退 `progress_timeline`；工具层仅输出核验结论。确认仅追加简短本地日志，不生成独立确认 JSON。
-- 请求恢复信息包含原始 revision、事件 ID、幂等 key、准确正文及其他实际请求字段。revision 也参与幂等匹配，重放不能换成新查询的 revision。响应丢失先回查，失败保留待同步事实，按既有冲突协议处理，不自动循环重试。普通同步不改变业务字段或用户验收状态。
-- 本次明确升级 `bug-fix` 与 `an existing Child Workspace` 两个已有 Workspace 的通用指令和完整 Custodian Skill 包；保留业务规则、身份、历史证据及其他 Skill。升级前检查基线和本地修改，保留升级前内容和可恢复包来源；其他 Workspace 仅提供显式路径升级流程。真实 Profile 安装、自动批量升级、提交与远程写不在本次范围。
-- 仅做相关协议、幂等/revision、蓝图、隔离安装和 Skill/试点完整性回归，不开展真实会话耗时对比或新建 Agent 评测平台。不改变 MCP 接口或数据库 schema。
+ProgressEvent is separate from the Work Tree. It stores a short summary, optional verbose details, evidence and provenance. Old summary-only events remain valid. Manual Steps do not change the parent work's status or revision. Current state comes from explicit fields; event history does not infer it.
 
-### 2.6 沟通与文本输出（2026-10-13 用户确认）
+The application contract is in [application.rs](../crates/karazhan-core/src/application.rs). Adapter implementations are in [crates](../crates/) and [the Tauri shell](../apps/desktop/src-tauri/). Use the tagged Command/Query structures rather than inventing payload fields.
 
-仓库 AGENTS 与 Custodian 模板要求对话、报告及其他文本遵循 ASD-STE100 或其思想：短句、准确用词、统一术语、主动语态及有序步骤。中文采用相同原则；保留代码、命令、路径和引用的准确形式，完整标准合规须经核对。当前 Workspace 的相同规则已落盘；本次将规则纳入上述两个版本控制入口，不自动升级其他存量 Workspace。
+## Agent collaboration
 
-### 2.7 HTML 回答 Skill（2026-10-16 用户确认）
+Medivh prepares and validates top-level Project Workspaces. It may then register the matching top-level Project and primary Workspace binding through MCP. It may also capture Backlog explicitly requested by the user, under Root by default or a queried, user-specified Parent. It cannot manage Custodian sessions, create Child work, update ongoing fields/Today/progress, or edit existing Backlog. See [Medivh's role boundary](../blueprints/medivh/README.md).
 
-- 从指定本地仓库导入 answer-me-with-html 0.5.2（commit `3d519e63911c40254f2c92aa1473b572dfa1a4d7`）的完整 Skill、bundled CLI、参考文件及许可证，记录可恢复来源。保留上游内容，不安装全局 CLI 或额外运行时 npm 依赖；渲染要求 Node.js 20+。
-- Medivh 的 discoverable Skills 增加同名 Skill；Custodian 启动包包含三项 Skill，新顶层 Project 和 Child 复制完整包。两类角色的 MCP 权限保持。
-- 按原生规则选择可视化，不启用 always-on；调用所属 Skill 的 bundled CLI，默认 `--no-open`。按次设置 AM_HOME 为所属 Workspace 的 `artifacts/answer-me-with-html`，不随仓库 cwd 改变。Medivh 使用其 Profile 根目录；Custodian 使用 manifest 中的 Workspace 根目录。链接遵循宿主格式，不修改全局配置。
-- 保留上游版本提示；实际受管 Skill 更新通过 Karazhan 导入及安装器完成，不执行上游通用更新命令覆盖受管目标。清理、服务启动和视频遵守 Skill 的用户请求边界。
-- 测试通过后提交、普通推送，再运行组件安装器更新真实 Medivh 和启动包；仅定点升级当前 bug-fix 的指令及完整三项 Skill。保留业务规则、其他 Skill、记忆和会话；桌面 App 和其他存量 Workspace 不在范围内。
+The user starts a Custodian in the prepared Workspace. Each Custodian owns its local requirements, Context, instructions, logs, and results. Parent/sibling Context is referenced; it is not copied wholesale or edited by another owner. Create Child Workspaces only when actual work needs them. A precise user-supplied path confirms the target, but does not authorize overwriting conflicts or broader access.
 
-### 2.8 任务核对、日志与同步触发条件（2026-10-17 用户确认）
+Write durable local files before structured synchronization. Local requirements own goal/scope/acceptance. Reuse context during continuous work; recover only the necessary records after context loss or relevant external changes. Synchronize reviewable deliveries, major milestones, and changes that affect execution or need user attention. Ordinary discussion, reading, and individual tests do not require a remote query or a separate progress event.
 
-本节细化 §2.4 R03 和 §2.5，取代其中冲突表述。用户选择按真实交付合并同步、按恢复需要合并日志；本次仅修改仓库源文件，不安装、不升级 Medivh 或既有 Workspace，不提交、不推送。
+Retain enough local information to recover an uncertain write, including its exact request. Use stable idempotency and expected revisions. Independently query after a write; for progress, check recent events first and use the full timeline if needed. Complete handoffs belong at phase acceptance, ownership transfer, deliberate stopping for recovery, or a major baseline switch. Append history; do not maintain conflicting status copies. User acceptance controls `done`.
 
-- 普通讨论复用当前上下文。首次启动、上下文丢失或中断后恢复、已知外部变化、信息缺失或冲突时，才读取必要的身份、索引、需求和日志。普通用户回复不触发恢复；实际阶段、依赖消费和上游约束检查仍按既有边界执行。
-- 本地分析、改稿和验证不查询 Karazhan。实际注册、同步、字段、Today、Child 或 ResourceBinding 操作，用户明确要求查询，以及冲突或未决写入恢复时，才执行对应查询。保留写入所需的当前 revision、稳定幂等请求和写后独立确认；不因本地信息齐备而跳过远端写入校验。
-- “可审阅交付”指首次形成满足本轮明确交付条件的完整成果，或后续实际阶段交付。重大里程碑，以及影响执行或需要用户关注的关键阻塞/条件变化，也触发合并同步。草稿、连续普通修订、措辞调整和重复展示不单独同步。回答结束不代表阶段结束。
-- 普通分析、改稿、小修复和单次测试，不单独追加 `agent_log.md`；合并到实际交付或需要恢复的停工记录。关键授权、影响执行的决策、阻塞和未决外部操作及时留存。授权和决策保存于相应权威文件，日志只保留必要摘要和位置；已有正文和证据不全文复述。保留实际同步前的准确请求信息和简短确认。
-- 完整交接仍限于阶段验收、责任移交、重要基线切换完成，或主动停止且需要后续恢复的工作。实际阶段交付结束当前工作、等待后续评审或恢复时，保留完整交接；普通回答、同步和暂定稿不触发交接或交接指针更新。
-- 统一仓库指令、Custodian 模板、Context 恢复说明和同步 Skill。保留角色、权限、上游/依赖检查、必要验证和安装保护。不修改 MCP 接口或数据库，不新增定时检查、独立台账或报告要求，不改历史日志。
-- 验证使用现有蓝图、隔离安装测试和受影响 Skill 的格式校验；用静态场景走查核对普通补充、单句修订、重复展示、关键变化、恢复、实际交付和同步冲突。走查不证明真实 Agent 效率，不新增措辞匹配测试或 Agent 评测平台。
+The startup package contains [workspace-provisioning](../blueprints/skills/workspace-provisioning/SKILL.md), [karazhan-mcp-collaboration](../blueprints/skills/karazhan-mcp-collaboration/SKILL.md), and [answer-me-with-html](../blueprints/skills/answer-me-with-html/SKILL.md). HTML explanations use the Skill's native selection rules, a Workspace-local artifact directory, and `--no-open`; do not enable it for every reply. Preserve upstream notices and license files. Upgrade managed copies through the source/package workflow.
 
-### 2.9 Context 更新与通知设计（2026-10-17 用户确认）
+## Installation and updates
 
-设计阶段只交付[设计草案](context-update-notification-design.md)和本地 HTML 选型页。用户选择方案后，再确认实现需求并开始开发；实现范围见随后确认的 §2.9.1。
+The [README](../README.md#install-from-source) describes supported source installation. The installer builds the current clean, complete checkout. Managed versions use Tauri's major/minor and the reachable commit count as patch. Record the source commit and content baseline per target. Higher versions update, equal versions are a no-op, missing targets can be restored, and downgrades are rejected. Locally changed managed files and conflicting existing MCP configuration stop installation. Back up unversioned targets before adoption.
 
-- 已确认同一个 cmux 内、Agent 对话交互、用户主动或 Agent 提案后选择内容和对象；对象包括 Parent、Sibling、Child，独立选择本地文件、自身 Context 与 Karazhan 同步。接收方自行评估影响，不要求回执；改变目标、约束或共享基线时仍按现有规则确认。
-- 比较原生 cmux＋文件、本地持久投递服务、外部消息系统及适配机制；区分已确认能力、用户本机证据与待实验行为。用户批注取消回执、通知 ID、去重与自建恢复流程；保存仅指本地文件，Karazhan 读写由单独选择触发。Codex、Claude Code、Hermes 的 Queue 或同类入口、Hook 与 cmux 组合均需验证；先验证原生能力，按实测缺口再考虑服务。A、B、C 均未选定。
-- 本次不开发消息能力、不安装服务、不修改 hooks、不启动会话、不实发通知，不改变 API/schema、其他 Workspace、发布确认或用户验收权限。既有文件所有权与 Context 正文不进入产品数据库的边界继续有效。
+Install the App under `~/Applications`, binaries under `~/.local/bin`, and selected Medivh files under `~/.hermes/profiles/medivh`. Only the two required MCP configuration leaves are filled when missing; unrelated settings remain user-owned. Memories, sessions, and other Skills are not replaced or baselined. `memories/USER.md` in the repository is only a reference template. `KARAZHAN_INSTALL_SKIP_APP=1` skips the App and continues with MCP and Medivh. The installer does not pull source or configure model credentials.
 
-用户随后要求“验证原生能力”，并要求按最新 DeepSeek 配置重测 Claude。当时仅授权独立测试会话、临时配置及测试消息。[验证报告](context-notification-native-validation.md)区分真实模型、本地测试服务、当前失败组合和未测项；随后用户选择 B，见下一节。
+Check cmux and Zed before build/download work. Find the CLI on `PATH` or the App in `/Applications` or `~/Applications`. For cmux, distinguish an App without a reachable CLI and explain that Claude notifications need the CLI and a running cmux session. For Zed, an App is sufficient; its CLI is optional. Missing dependencies produce a warning with affected functionality and official installation instructions. Continue installation. Do not install either dependency, launch them, or edit `PATH` automatically.
 
-#### 2.9.1 第一版实现范围（2026-10-17 用户选择 B）
+Network commands inherit standard proxy environment variables. `KARAZHAN_INSTALL_PROXY` is an optional override for installer network subprocesses. No fixed loopback proxy is the default, and no global proxy configuration changes.
 
-用户对“按需运行的本地适配器，统一发送入口和会话登记，接入 Claude、Codex，Hermes 验证后接入”的范围回答 Yes。此前设计与实验阶段的开发限制由本节在此范围内替代。
+Normal release builds avoid a repository-local launchable `.app`. Installation bundles in a temporary target and retains one installed App, avoiding duplicate bundle IDs. The `medivh` launcher checks its profile process and PID lock before starting `hermes -p medivh chat`. It refuses duplicate active launches and clears only its own stale lock.
 
-- 实现仓库内可直接运行的 Node.js 命令。使用显式指定的本地 JSON 映射文件，登记 Work ID、Workspace 路径、Agent 类型和精确会话地址。一个 Work 只选一个接收会话；更换时显式替换。登记不启动或恢复 Agent，不改变业务状态。
-- 支持登记、列出、移除与发送。发送指定来源、具体接收 Work 和用户选择的正文文件。默认只预览；Agent 展示内容和接收地址并取得用户确认后，才使用确认参数发送。不同对象需不同正文时分别预览和发送。不支持的 Agent 或未知对象须在发送前报错。
-- Codex 使用 `codex queue --thread <UUID> --message <text>`；Claude 使用 `cmux agent message <workspace-or-surface-UUID>`。使用精确 UUID，避免标题或前缀匹配。消息包含来源 Work 和 Workspace。映射只是人工登记的路由信息，不证明在线或真实会话归属；登记时须核对目标，换会话后重新登记。
-- 全部接收对象先校验，再调用原生工具；分别报告原生工具接受或调用失败。工具接受不代表已读或采用。部分发送失败不回滚已接受的发送，不自动重试。Hermes 第一版不支持。
-- 不新增回执、通知 ID、去重、消息数据库、常驻服务、自动发现或自动重试。适配器不修改 Context、不遍历 Workspace、不读写 Karazhan。Agent 继续负责内容选择、自身文件更新与单独选择的 Karazhan 同步。
-- 验收覆盖：未确认不调用通道；选择的正文与对象准确；正确的 CLI 参数与来源信息；精确地址替换和移除保护；未知/不支持对象发送前失败；部分失败与无重试；正文不进入映射或普通发送结果；使用隔离命令替身验证进程边界，并复用原生接收实测。不自动安装到 Profile 或其他 Workspace，不提交推送。
+## MCP configuration
 
-#### 2.9.2 自助登记（2026-10-17 用户要求）
-
-用户要求“实现自助登记”。在 §2.9.1 上增加 `self-register` 与 Workspace 本地 Hook 接入；不再要求用户手工填写 Work 或 session UUID。
-
-- 从当前目录或指定目录向上找到最近的 `.workbench/task.yaml`，只读取该文件的 `work.id`。不遍历其他 Workspace。Codex 使用 `SessionStart` 输入的 `session_id`，会话内自助调用可使用 `CODEX_THREAD_ID`。Claude 使用 `CMUX_SURFACE_ID`，缺失时不猜测目标。
-- `install-hooks` 合并 Workspace 的 `.codex/hooks.json` 和 `.claude/settings.local.json`，保留既有 Hook 和设置，重复运行不重复追加。Hook 针对启动、恢复、clear 和 fork；compact 不切换接收会话。Hook 输入 cwd 必须属于配置的 Workspace；不把正文、transcript 或其他 Hook 字段写入登记。
-- 启动/恢复时刷新当前 Work 的一个接收地址，最近一次成功登记生效。并行登记不同 Work 不丢数据。原生信任检查保留，不自动修改信任状态。缺少身份、地址或有效配置时明确报错，不生成猜测登记。
-- 默认共享路由文件为 `$XDG_STATE_HOME/karazhan/context-notify/sessions.json`，未设置时使用 `~/.local/state/karazhan/context-notify/sessions.json`；允许 `--registry` 或 `KARAZHAN_CONTEXT_REGISTRY` 显式覆盖。只保存路由信息，不保存消息或回执。写锁只保护登记修改，不重试消息发送。
-- 本轮可为当前 bug-fix Workspace 接入本地 Hook 并登记当前 Codex 会话；不改用户级 Profile、其他 Workspace 或 cmux 生产 Hook。用隔离配置验证两类原生启动与恢复入口，保留原有通知确认门槛；不向业务会话发测试通知。
-
-## 3. 产品原则
-
-1. **Today 优先**：打开应用默认进入 Today，让用户以最少切换恢复当天工作。
-2. **一份结构化视图**：Today、Projects & Tasks、Backlog、API 和 MCP 都读取同一业务核心与 SQLite 数据；它是用户的统一控制面，但不替代 Agent Workspace 中的第一手执行事实。
-3. **结构与历史分离**：当前状态保存在节点上；发生过的事情记录为不可混淆的 ProgressEvent。
-4. **文件优先落盘**：Agent 先把代码、产物、进度、状态和证据写入自己的 Workspace 文件，再通过 MCP 同步结构化视图。Context、Workspace、manifest 和日志不搬进数据库；数据库只保存必要路径、来源和绑定。
-5. **不从自然语言静默推断当前状态**：日志可以形成带来源的进展事件，但不能偷偷覆盖 status、priority、parent、blocker 或 Today。
-6. **安全迁移优先于自动修复**：来源冲突必须可见；不能靠 mtime 或猜测静默选定“正确值”。
-7. **少对象、明确语义**：不为轻量展示另外发明 TaskItem、TodoItem、Comment 或通用 JSON 领域对象。
-
-## 4. 核心概念
-
-### 4.1 全局 Work Tree
-
-系统中的 Project、Task 和 Backlog 共同组成一棵全局工作树。树顶有一个用户不可编辑的系统 Root；界面通常隐藏这个 Root。
-
-允许的父子关系如下：
-
-| Parent | 允许的直接 Child |
-|---|---|
-| 系统 Root | Project、Task、Backlog |
-| Project | Project、Task、Backlog |
-| Task | Task、Backlog |
-| Backlog | 无；Backlog 在阶段 3 是叶子 |
-
-每个非 Root 节点：
-
-- 有一个稳定 UUID；
-- 有且只有一个 Parent；
-- 在同一 Parent 下有唯一 key 和明确的手工顺序；
-- 可以移动到另一个合法 Parent，但不能形成环；
-- 创建后不能原地改变类型。
-
-这个模型允许：嵌套 Project、Project 下的一级 Task、任意必要深度的 Child Task、独立 Task，以及挂在 Root、Project 或 Task 下的 Backlog。
-
-### 4.2 Project
-
-Project 表示长期工作容器。它可以包含子 Project、Task 和 Backlog，也可以拥有自己的状态、优先级、目标、验收条件和 blocker。
-
-Project 的 slug 可空；一旦填写，在所有 Project 中唯一。Project 可以先创建，Workspace 和 Context 路径后补，不要求创建时同时具备。
-
-### 4.3 Task 与 Child Task
-
-Task 是可执行工作。Task 不保存 `project_id`、`root/child` 标记或单独的 TaskItem 类型，其含义由 Parent 决定：
-
-- Parent 是 Root：独立 Task；
-- Parent 是 Project：该 Project 的一级 Task；
-- Parent 是 Task：Child Task。
-
-Child Task 与其他 Task 是同一种业务对象，拥有自己的 ID、状态、优先级和进展。界面可以把它显示成更轻量的 TaskItem 行，但这只是呈现方式，不是另一份数据。
-
-阶段 3 没有 TodoItem，也没有“唯一下一步”字段。一个 Task 的下一步工作由零个、一个或多个直接 Child Task 表达，并使用同级顺序表示排列。这样不会把多个行动压缩进一段字符串，也不会同时维护 Task、Todo 和 next_action 三份真相。
-
-### 4.4 Backlog
-
-Backlog 表示尚未正式立项的 idea、problem、request 或 research。它可以放在 Root、Project 或 Task 下，但阶段 3 不允许拥有 Child。
-
-Backlog 被推进时不会原地变成别的类型。系统在一个原子操作中：
-
-1. 创建新的 Project 或 Task；
-2. 把 Backlog 状态设为 `promoted`；
-3. 保存新节点 ID；
-4. 保留原 Backlog 作为来源记录。
-
-### 4.5 Today
-
-Today 不是另一棵树，也不是由 status 自动推导的列表。它保存用户明确选择的 Project 或 Task，以及独立的手工顺序。
-
-把节点加入、移出或重排 Today：
-
-- 不改变节点在 Work Tree 中的位置；
-- 不改变 priority；
-- 不改变 status；
-- 不创建或删除 Project / Task。
-
-Backlog 不能进入 Today。
-
-### 4.6 Context
-
-在 Karazhan 产品数据模型中，Context 只是 Project 上的一个可选目录路径，主要给 Agent 阅读。目录中可以有 `index.md`、`coordination/` 或其他文件，但 Karazhan：
-
-- 不扫描目录内容；
-- 不建立文件清单；
-- 不复制正文、摘要或 digest 到数据库；
-- 不把 coordination 文件当作结构化状态源。
-
-Karazhan 当前不为 Task 保存专属 `context_path`。Task 通过产品查询背景时，沿祖先链找到最近的 Project，并使用该 Project 的 `context_path`；独立 Task 若没有 Project 祖先，就没有产品层隐式 Context。这不禁止 Custodian Workspace 在文件系统中拥有自己的 `context/`：该目录及其 `index.md` 由 Workspace 文件契约管理，是文件事实，不由 Karazhan 扫描或完整重建。
-
-### 4.7 ResourceBinding
-
-Project 或 Task 可以绑定外部资源：Workspace、manifest、`agent_log.md`、repository、外部 session、URL、文件或目录。
-
-每条绑定保存节点、资源类型、原始 locator、是否主绑定、当前可用性和来源。相同物理路径可以被多个节点分别绑定；发现共享路径时不能因此合并节点。路径失效只改变可用性，不删除业务对象。
-
-Root 和 Backlog 不拥有 ResourceBinding。
-
-### 4.8 ProgressEvent
-
-ProgressEvent 记录“发生了什么”，只关联 Project 或 Task，不属于 Work Tree。它至少覆盖：
-
-- 普通进展与交付；
-- status、priority、parent、blocker 的变化；
-- Today 的加入、移除与重排；
-- 从 legacy 日志导入的事件。
-
-事件保存发生时间、记录时间、短概要、可选 verbose 详情、证据、actor、写入渠道和可选来源绑定。Action log 以概要和详情两个独立字段表达；旧事件和旧客户端不提供详情时保持兼容。当前字段变化与相应事件必须在同一业务事务中保持一致。
-
-ProgressEvent 不反向充当当前状态。日志同步产生事件后，status 等字段仍须由明确的用户、API 或 MCP 命令修改。
-
-用户也可以为 Project / Task 手工追加带状态的 Step。Step 使用 ProgressEvent 表达，不是新的 Work Tree 节点，也不改变所属 Project / Task 的当前状态或 revision。手工 Step 可使用与工作状态一致的状态文案；UI 默认显示最近 3 条概要，并允许切换完整 Action log，只有完整 Action log 展示 verbose 详情。
-
-## 5. 状态与生命周期
-
-### 5.1 Project / Task 状态
-
-Project 和 Task 共用以下状态：
+The MCP host starts `karazhan-mcp` on demand. Set the required `KARAZHAN_DATABASE_PATH` to the intended database. The default desktop path on macOS is:
 
 ```text
-planned, ready, in_progress, pending, review, done, cancelled
+~/Library/Application Support/com.jiayi.karazhan/karazhan.sqlite3
 ```
 
-含义：
+Example host configuration; replace both absolute paths:
 
-| 状态 | 用户语义 |
-|---|---|
-| `planned` | 已规划，但尚未准备执行 |
-| `ready` | 条件具备，可以开始 |
-| `in_progress` | 正在推进 |
-| `pending` | 当前等待外部人员、时间、资源或决定 |
-| `review` | 已有交付，等待用户或获授权 Assistant 验收 |
-| `done` | 已验收完成 |
-| `cancelled` | 已取消，保留历史 |
-
-legacy 的 `waiting` 只在导入边界确定性映射为 `pending`，同时保留原值作为导入证据。新系统不接受 `waiting` 作为当前状态。
-
-系统保留 `review` 与 `done` 状态以及 delivery 事件，但 MVP 不要求单独实现 `submit_delivery` / `review_delivery` 授权命令。用户或 Custodian 通过现有结构化命令记录事件和明确更新状态；日志中的“完成”等自然语言永远不能自动把节点设为 `done`。
-
-### 5.2 Blocker
-
-Blocker 是 Project / Task 上的独立文本条件，不是互斥状态。`in_progress`、`pending` 或 `review` 都可以同时存在 blocker。清除 blocker 不自动改变 status，改变 status 也不自动清除 blocker。
-
-### 5.3 Priority
-
-Project、Task 和 Backlog 使用：
-
-```text
-urgent, high, medium, low, none
+```json
+{
+  "mcpServers": {
+    "karazhan": {
+      "command": "/absolute/path/to/karazhan-mcp",
+      "env": {
+        "KARAZHAN_DATABASE_PATH": "/absolute/path/to/karazhan.sqlite3"
+      }
+    }
+  }
+}
 ```
 
-Priority 表示业务重要性；Today 手工顺序表示用户现在想先看、先做什么。两者不得相互暗中改写。
+`karazhan_command` accepts `{ "request": <Command> }`; `karazhan_query` accepts `{ "request": <Query> }`. Commands carry their defined revisions, idempotency, event IDs and actor/channel context. MCP stdout contains protocol frames only; diagnostics go to stderr. Missing database configuration exits with an error. MCP does not provide arbitrary shell execution, file reading, or Agent lifecycle control.
 
-### 5.4 Backlog 分类与状态
+## Local HTTP
 
-Backlog kind：
+While the desktop runs, HTTP attempts to bind exactly `127.0.0.1:47831`. It never falls back to another port or a LAN address. Bind failure leaves the desktop core available and reports Agent API unavailable. Exit releases the port.
 
-```text
-idea, problem, request, research
+Routes are `POST /v1/command` and `POST /v1/query`. Requests require the per-launch random bearer token and the expected Host. An optional Origin must match the local endpoint. Structured errors include `unauthorized`, `invalid_host`, and `invalid_origin`. Never log tokens, commit them, place them in URLs, or reuse them across launches.
+
+The stock desktop has no supported token handoff to external clients. It does not publish its token in a file, UI, environment, stdout, or discovery endpoint. Use MCP for external automation. The HTTP adapter remains a tested internal integration surface, without a desktop copy-and-paste token workflow.
+
+## Context notifications
+
+The on-demand [Node adapter](../scripts/context-notify.mjs) uses native Codex queue or Claude/cmux. It has no resident service, database, processing receipt, automatic retry, or sent-message history. Hermes reception is not enabled. It does not call Karazhan or manage Agent lifecycles.
+
+For user-requested Context updates, ask which text to update and which destinations to use: only the owner's local files, its Context, Parent, Sibling, Child, and a separate optional Karazhan update. At a major decision, the Agent can propose selected paragraphs and destinations. Use the host's structured choice UI when available. Confirm the exact content and destinations before sending. Local saving does not imply a Karazhan write. Receivers assess the message and update only their own files.
+
+Run these commands from the intended Workspace, using an absolute script path:
+
+```sh
+node /absolute/path/to/karazhan/scripts/context-notify.mjs --help
+node /absolute/path/to/karazhan/scripts/context-notify.mjs self-register --agent codex
+node /absolute/path/to/karazhan/scripts/context-notify.mjs self-register --agent claude
+node /absolute/path/to/karazhan/scripts/context-notify.mjs install-hooks
+node /absolute/path/to/karazhan/scripts/context-notify.mjs list
 ```
 
-Backlog status：
+Self-registration finds `work.id` in the nearest `.workbench/task.yaml`. Codex uses Hook `session_id` or, outside a Hook, `CODEX_THREAD_ID`. Claude uses `CMUX_SURFACE_ID`; a Claude session UUID or workspace title is not a substitute. A Hook verifies its working directory belongs to the Workspace. Startup/resume/clear/fork can register; compaction does not replace a route.
 
-```text
-captured, considering, ready, promoted, discarded
+`install-hooks` merges Workspace-local `.codex/hooks.json` and `.claude/settings.local.json`, preserving existing handlers and settings. Repeated installation does not duplicate handlers. This command does not grant native trust. Review non-managed Codex Hooks in `/hooks` when prompted and trust the project configuration through the runtime. Claude's project trust controls also apply. Already running sessions do not necessarily reload new configuration; use self-registration immediately or restart/resume normally. Moving the script requires installing the local Hook again.
+
+Routes live at `$XDG_STATE_HOME/karazhan/context-notify/sessions.json`, or `~/.local/state/karazhan/context-notify/sessions.json`. `--registry` or `KARAZHAN_CONTEXT_REGISTRY` can override this. Concurrent registration uses a bounded lock and atomic replacement. One Work has one current route; the latest successful self-registration replaces it. Registration does not prove the session is online or owned by the intended user. Check `list` and verify the destination. Exited sessions are not automatically removed.
+
+Explicit registration and removal require precise UUIDs. Use `register --work UUID --workspace /absolute/path --agent codex|claude --address UUID`, adding `--replace` to change an existing route. Use `unregister --work UUID --address UUID` to remove that exact address.
+
+Send selected text from a file:
+
+```sh
+node /absolute/path/to/karazhan/scripts/context-notify.mjs send --source SOURCE_WORK_UUID --to TARGET_WORK_UUID --file /absolute/path/to/selected-text.txt
 ```
 
-普通“移除”操作把 Backlog 设为 `discarded`。Project / Task 的 `cancelled` 仍是业务状态，不等于 Archive。Project / Task 可以先递归归档；只有已归档子树才能在 Archive 页面二次确认后永久删除。
+This previews without sending. After the user approves that content and those targets, repeat with `--confirm`. Multiple `--to` arguments are supported. `--confirm` records the caller's assertion of approval; it is not an independent approval UI. Re-preview after content or routes change. Keep selected files outside tracked source. Do not include credentials or unselected private Context.
 
-## 6. 信息架构
+Native acceptance means the send command succeeded, not that the receiver read or adopted the text. Failures are visible per target; a timeout can leave acceptance unknown. There is no automatic resend. Codex queue and cmux behavior depend on the installed runtime and session state. Claude/cmux can wake an idle supported session; cmux alone must not be assumed to wake idle Codex. Offline addresses do not guarantee immediate handling. Use trusted CLI commands on `PATH`.
 
-一级导航为：
+## Database safety
 
-```text
-Today
-Projects & Tasks
-Backlog
-Archive
-```
+SQLite uses foreign keys, WAL, a bounded busy timeout, numbered checksum-verified migrations, and a cross-process migration lock. A migration competitor gets `migration_busy`; checksum mismatch stops writes. Business transactions preserve type, tree, sibling, Today, binding, and event invariants.
 
-阶段 3 不提供 Inbox、独立 Task Detail或 Project Background 页面。Projects & Tasks 左上角提供顶层 Project / Task 创建；Project 右键可创建 Child Project / Task，Task 右键可创建 Child Task。Backlog 与 Today 也提供各自受限的圆形 `+` 创建入口；拥有相应 Workspace 和授权范围的 Custodian 可以经 API / MCP 创建和维护业务对象。
+Before an upgrade migration, checkpoint WAL and use SQLite Online Backup. Validate the backup and run migrations transactionally. Do not copy an active WAL database with a raw file copy. Stop desktop and MCP writers before read-only diagnosis or an approved operational restore. Database backup does not include Workspace or Context content.
 
-界面采用左侧导航、单一主工作区、中等密度文本列表、弱边框和低视觉噪声。标题和当前状态优先于辅助元数据。Project 标题区及展开内容可以使用温和的分组背景，但风格不得牺牲层级、键盘操作和错误反馈的清晰度。
+Explicit backup and restore are tested Rust core APIs. They have no end-user desktop, MCP, HTTP, or administrative CLI entry point. Restore validates a temporary database's integrity, foreign keys, invariants, and object counts before atomic replacement. Keep failed-restore diagnostic files. Do not substitute manual database edits or a raw copy for these APIs. Destructive down migrations are not supported.
 
-## 7. 页面需求
+## Verification and boundaries
 
-### 7.1 Today
+Use `npm ci`, then `npm run check`. The gate runs Rust formatting, strict Clippy, Rust tests, frontend tests, TypeScript checks, and a production frontend build. Tests use synthetic data, memory databases, and temporary directories. Preserve behavioral coverage for migrations, revisions, idempotency, atomic rollback, adapter contracts, safe paths, installer ownership, and notification confirmation/routing.
 
-打开应用后默认进入 Today。
-
-Today 是一个 Project / Task 混合列表，必须支持：
-
-- 显式加入与移出；
-- 拖拽调整手工顺序，并在重启后保持；
-- 每行独立展开和折叠；
-- `Expand all` / `Collapse all`；
-- 行内修改 status 和 priority；blocker 保留在领域 contract 中，但不要求在紧凑 Today 行内编辑；
-- 有有效 Workspace 时执行 `Open in Zed`；
-- 从其他页面执行 `Move to Today`，已加入时显示 `In Today`；
-- 从条目最右侧向左滑后露出 Delete，仅移出 Today；未 reveal 时 Delete 不可聚焦。
-- 通过标题旁的圆形 `+` 创建只有一行 Description 的 Quick item；它以 checkbox 外观修改普通 Task status，可拖拽排序、可删除，但不出现在 Projects & Tasks。
-
-首次进入时，Today 行默认展开。每行展开区只显示该节点的一级直接 Child Task，不递归展开更深后代，也不显示 Child Project 或 Backlog。
-
-如果一个 Parent 和它的直接 Child Task 都是 Today 的显式成员：
-
-- 数据层保留两条 Today membership 和各自顺序；
-- Parent 展开区不重复显示该 Child；
-- Child 从 Today 移除后，它重新出现在 Parent 的展开区。
-
-直接 Child Task 使用轻量 Task 行呈现，但仍读写普通 Task 的 status，而不是 Todo checkbox 数据。若最终 UI 使用勾选外观，它只能是把 Task status 改为 `done` 的快捷操作，不能形成第二份完成状态。
-
-Quick item 也不是新领域类型，而是带 `is_quick_item` 标记的普通 Task；用户输入的 Description 存入其必填标题字段。创建必须原子加入 Today，checkbox 继续使用带 revision 检查的 Task 状态命令，删除使用带幂等、actor/channel 与事务语义的专用命令。Projects & Tasks 投影必须排除 Quick item。
-
-Today 展开区显示最近 3 条有业务意义的 Steps / Progress 概要，并可切换 Action log / Recent steps；Action log 同时显示概要和可选 verbose 详情。Project、Task 和直接 Child Task 均可通过右键 Add step。Today membership/order、Parent 变更、普通字段保存等结构化审计事件继续保留在完整 timeline，但不进入 Recent / Action log、不占用最近 3 条名额，也不单独使条目出现 disclosure。Today 底部继续显示全局 Recent Progress。Today 首屏读取产品数据库，不等待 Workspace 检查或日志同步完成。
-
-当前可见的 Today 与 Projects & Tasks 页面必须及时反映 HTTP / MCP 等外部进程的写入：可见期间至多约 1 秒刷新一次，窗口重新聚焦或页面恢复可见时立即刷新。后台刷新不得重置用户的展开/折叠状态，不得并发发起重叠查询，相同数据不得触发无意义的页面重渲染。
-
-### 7.2 Projects & Tasks
-
-Projects & Tasks 是同一全局 Work Tree 的 Project / Task 投影；系统 Root 和 Backlog 不在这张页面的主树中显示。
-
-页面必须：
-
-- 展示嵌套 Project、Project 下的 Task、Task 下的 Child Task以及独立 Task；
-- 使用缩进和连接线表达递归层级；行内只显示当前节点名称和可空 Description，不重复祖先 breadcrumb，也不显示系统 Root；
-- 支持在合法 Parent 之间移动节点，并在移动前检查类型、环和同级 key / position 冲突；
-- 支持同级手工排序；
-- 在 Project 范围内提供 `Expand all` / `Collapse all`，Project disclosure 使用 chevron；
-- 提供 `Move to Today` / `In Today` 和 `Open in Zed`；
-- 直接编辑 status 和 priority；
-- 顶层圆形 `+` 创建 Project / Task；Project 右键创建 Child Project / Task，Task 右键创建 Child Task；创建表单包含 Name、Description，Project 另含可选本地 Path；
-- Project / Task 右键提供 Add step 和 Archive，不提供直接永久删除；
-- 展开内容使用一个统一详情卡片：Recent steps 在上、未单独进入 Today 的递归 Child Project / Task 在下；某个 Child 自己进入 Today 后，它与其子树不再在 Parent 卡片重复；Project 的 Steps 聚合仍归属该卡片的自身与后代业务事件并标明后代来源；Recent steps 默认显示最近 3 条概要，并可切换展示概要与详情的完整 Action log；
-- 底层继续保留 goal、acceptance、blocker、Context、ResourceBinding 和完整事件能力，但本页不要求展示大型 Details 面板，也不读取 Context 正文。
-
-Task 的详细区域默认折叠；存在 Child 或 Step 的节点显示 disclosure。Child Task 直接出现在树中，不再另建 To-do 区块，也不在详情中复制同一 Child。
-
-本页面不跳转到独立 Task Detail。用户在树行和展开区完成高频查看与编辑。
-
-### 7.3 Backlog
-
-Backlog 页面是全局 Work Tree 中所有 Backlog 叶子的专用投影。默认列表隐藏已 promoted 和 discarded 的条目。每行显示标题与 Description，并以稳定对齐的列展示 kind、priority 和 tags；kind 与 priority 使用无边框文本，不显示 status 或 Parent breadcrumb。生命周期状态仍保留在领域模型中，用于 Promote、Discard 和显式查询。
-
-页面必须支持：
-
-- 使用与 Today、Projects & Tasks 一致的标题样式和标题旁圆形 `+`；创建表单包含 Title、Description、Parent、Kind、Priority 和逗号分隔 Tags；
-- 提供 Parent、kind、priority 和 tag 过滤，不提供可见 status 过滤；Parent、kind 和 priority 为无边框控件，Tag 是唯一带搜索框边框的字段；
-- Parent 选择器列出所有合法 Project / Task，并用隐藏系统 Root 的完整 breadcrumb 表达层级；筛选请求并发返回时只允许最后一次选择更新列表；
-- 通过右键菜单打开 Edit、Move、Promote 和 Discard，不在列表行常驻这些按钮；
-- 在当前行展开 Edit 表单，编辑 title、Description、kind、priority 和 tags；
-- `Save` 保存并收起，`Cancel` 恢复最近一次已保存内容；
-- Discard 在当前行确认，不使用必须跳转的详情页，并保留来源 Backlog；
-- Promote 前选择创建 Project 或 Task，以及合法 Parent；
-- Promote 成功后保留来源、设置内部生命周期状态并显示目标节点链接；
-- 不提供独立 History 页面或 History 区块。
-
-Backlog 拖拽可跨越当前可见行。落点仍在同一 Parent 时只更新同级顺序；落到不同 Parent 的条目位置时，必须在一个原子命令中同时改变 Parent 和目标位置，失败不得留下部分移动。
-
-### 7.4 Search（延期）
-
-Search 不在当前阶段 3 MVP 中实现，也不启动对应 Child；以下内容只保留为以后重新立项时的需求候选，不构成当前验收门槛。
-
-未来的 Search 应统一查找 Project、Task 和 Backlog，并按类型分组展示结果，至少考虑：
-
-- title、summary；
-- Project slug、节点 UUID；
-- status、priority、Parent；
-- blocker；
-- Backlog kind 和 tags；
-- ResourceBinding locator，例如 Workspace、manifest 或 repository 路径。
-
-搜索结果进入对应树位置或页面行，不要求独立详情页。Context 目录正文不在搜索范围内。
-
-### 7.5 Settings / Import（延期）
-
-Settings 与 Import 不在当前阶段 3 MVP 中实现，也不启动对应 Child。现有底层 migration、备份恢复及隔离测试证据继续保留；以下页面能力只作为以后重新立项时的需求候选：
-
-- 产品数据库位置和 schema version；
-- API / MCP 可用状态；
-- legacy 导入范围配置；
-- dry-run 报告、冲突和 apply；
-- 增量日志同步状态；
-- 数据备份、恢复和结构化导出；
--外部资源可用性检查。
-
-危险操作必须显示目标、影响范围和可恢复方式。单个 Project、日志或路径失败不能让整个页面和其他 Project 不可用。
-
-### 7.6 Archive
-
-Archive 是 Project / Task 的递归归档投影：
-
-- 归档一个节点时，选中节点及全部后代原子进入 Archive，并从 Projects & Tasks 隐藏；
-- 归档子树的全部 Today membership 同时移除，但节点、ProgressEvent 和其他历史保留；
-- 系统 Root 永远不能归档或删除；归档 Parent 不能接收新 Child；
-- `cancelled` 与 Archive 是不同概念；
-- Archive 提供 Reopen：恢复选中子树及使其重新可见所必需的已归档祖先；此前移除的 Today membership 不自动恢复；操作必须带 revision 检查、幂等事务语义并记录 ProgressEvent；
-- 永久删除只出现在 Archive 页面，必须明确展示后代数量并二次确认；未归档节点不得永久删除。
-
-## 8. 关键用户流程
-
-### 8.1 开始一天
-
-1. 用户打开应用，直接看到上次保存的 Today 顺序。
-2. 用户展开 Project / Task，查看一级 Child Task 和 Recent Progress。
-3. 用户拖拽调整 Today 顺序；业务 priority 不变。
-4. 用户可把不再关注的项目移出 Today；原节点、状态和树位置不变。
-5. 日志同步在后台运行，新事件出现后更新 Recent Progress，不阻塞首屏。
-
-### 8.2 恢复并推进一个 Task
-
-1. 用户从 Today 或 Projects & Tasks 找到 Task。
-2. 用户查看目标、验收条件、blocker、直接 Child Task 和最近进展。
-3. 如果有有效 Workspace，用户点击 `Open in Zed`。
-4. 用户或 Agent 更新 Task 状态，或创建 / 更新 Child Task 来表达下一步工作。
-5. 系统在同一操作中保存当前字段和相应 ProgressEvent。
-
-### 8.3 Agent 交付与用户验收
-
-1. Custodian 先把交付和证据写入自己的 Workspace，再追加 delivery 事件；需要评审时再通过通用状态命令明确进入 `review`。
-2. 用户检查摘要、证据和 Workspace 结果。
-3. 通过时明确设为 `done`；不通过时设回 `in_progress` 并记录原因。
-4. MVP 不要求专用交付授权命令；系统不得因为日志出现“完成”等自然语言而自动进入 `done`。
-
-### 8.4 推进 Backlog
-
-1. 用户在 Backlog 行点击 Promote。
-2. 用户选择目标类型 Project 或 Task、Parent 和必要字段。
-3. 系统使用 idempotency key 执行一个原子命令。
-4. 成功时创建目标、保留来源 Backlog 并建立 promotion link。
-5. 失败时 Backlog 保持原状，返回可安全重试的结构化错误。
-
-Workspace 和产品层 Context path 可以在目标创建后由负责该工作的 Custodian 补充；promotion 不因缺少 Workspace 而失败。
-
-### 8.5 在 Zed 中打开工作
-
-1. UI 只提交 Project / Task ID，不提交任意路径或命令。
-2. Rust core 从可信 ResourceBinding 解析 Workspace，canonicalize 后检查其为允许 root 内的现有目录。
-3. macOS 使用 Launch Services，例如 `/usr/bin/open -a Zed <path>`；不能假设 GUI 进程的 `PATH` 中存在 `zed` CLI。
-4. 缺少 Workspace、路径越界、Zed 未安装或启动失败时返回明确错误。
-5. 打开 Zed 不改变折叠、Today 顺序、status 或 priority。
-
-## 9. API 与 MCP
-
-桌面 UI、loopback HTTP API 和 stdio MCP 必须调用同一 Rust application/domain core，不能各自复制业务规则。
-
-MVP 对外能力至少覆盖：
-
-- 列出、读取、创建和更新 Project / Task / Backlog；
-- 读取 Work Tree、列出 Child、移动节点和同级重排；
-- 更新 status、priority 和 blocker；
-- 加入、移出和重排 Today；
-- 追加和查询 ProgressEvent；
-- 新增、检查和列出 ResourceBinding；
-- 编辑、discard 和 promote Backlog；
-- 查询 Project Context 路径；
-- 执行 legacy dry-run、apply 和增量日志同步；
-- 通过受信节点 ID 执行 Open in Zed。
-
-所有写操作必须：
-
-- 使用稳定 ID；
-- 记录 actor、channel / source 和 timestamp；
-- 支持 revision 乐观并发控制；
-- 对安全重试使用 idempotency key；
-- 返回结构化错误和冲突，不以字符串日志作为唯一反馈；
-- 与 UI 命令遵守完全相同的树、类型、状态和事务不变量。
-
-API / MCP 不负责 Agent session 生命周期，也不提供任意 shell 命令或任意文件路径访问。
-
-## 10. 阶段 2.5 迁移（延期）
-
-用户已决定当前阶段不继续 Settings、Import 或真实阶段 2.5 cutover。本节保留已经确认的数据语义、安全边界和未来实施要求，但不构成当前 MVP 验收门槛；不得据此对真实阶段 2.5 数据执行操作。
-
-### 10.1 迁移目标
-
-用户不应重新手工创建已有 Project、Task、Backlog、路径绑定和进展历史。迁移必须只读访问 legacy 源、先报告后应用、可重复执行且不产生重复对象。
-
-迁移仅扫描请求中明确给出的受信 `source_root` 和范围，绝不能默认扫描整个 home。它读取：
-
-- `registry/tasks.yaml`；
-- `registry/backlog.yaml`；
-- 范围内的 `.workbench/task.yaml`；
-- 范围内的 `agent_log.md`；
-- Project `context/` 目录是否存在及其路径。
-
-它不读取 Context 目录中的文件，也不读取或导入 coordination 内容。
-
-### 10.2 身份与映射规则
-
-1. 产品建立固定系统 Root。
-2. 每个 legacy Project slug 使用冻结 namespace 生成独立 Project UUIDv5；保留 slug，标题暂以 slug 合成，用户以后可修改。
-3. 所有 legacy Task 保留原 UUID。
-4. legacy Root Task 仍是 Task，成为对应 Project 的一级 Task；不能把它改造成 Project。
-5. 原有 Child Task 父链保持不变。
-6. 每个非空 legacy `next_action` 使用冻结规则生成确定性 UUIDv5 Child Task：title 为原文本，Parent 为源 Task，初始状态 `planned`，priority 为 `none`。
-7. 不同时创建 TodoItem，也不在 Parent 上保留另一份 current next_action。
-8. legacy Backlog 保留 UUID；有效 project_id 对应的条目挂到该 Project，无效或空 project_id 的条目挂 Root，不根据 notes 猜测 Parent。
-9. 已 promoted 的 Backlog 链接到迁移后的 Project 或 Task，不能重复创建目标。
-10. 每个 legacy Task 的 Workspace、manifest 和 log 分别形成 ResourceBinding；共享 locator 不合并节点。
-11. Project 只保存 `context_path`，不产生 ContextFile 或 BackgroundSource。
-12. legacy `today=true` 为 Project / Task 创建 Today membership；当前冻结快照全部为 false。
-13. legacy `waiting` 映射为 `pending`，原值保留在 ImportRecord。
-
-### 10.3 Dry-run 与 apply
-
-第一次导入必须先 dry-run，同时生成 canonical JSON 和用户可读报告。报告至少包含：
-
-- source snapshot 和 ruleset version；
-- 计划 create / update / no-op / skip / blocked 的对象；
-- 每个来源到目标 ID 的映射；
-- conflict code、severity、证据、安全默认和是否需确认；
-- report digest 与 apply eligibility。
-
-`apply_eligible=true` 只表示当前计划没有 blocker，不表示 importer 已实现、数据已应用或用户已确认切换。
-
-Apply 必须携带完整 report digest、ruleset version 和 source snapshot 前置条件。dry-run 后任一来源 digest 变化，都必须拒绝 apply 并要求重新 dry-run。
-
-导入可以让互不相关的记录独立成功或失败，但任何失败都必须使 ImportRun 明确标为 `partial_failure` 并列出未应用记录。身份或关系无法安全确定时，相关对象必须 blocked。
-
-### 10.4 幂等规则
-
-- 相同 source key 与相同 digest：no-op；
-- 相同 source key 与不同 digest：报告 `source_record_mutated`，不覆盖已有 Event；
-- 新的日志 section key：创建一个 ProgressEvent；
-- 相同 apply idempotency key 和报告：返回原结果；
-- 相同 key 携带不同 report digest：返回冲突。
-
-日志 section 的身份不能只依赖 `last_heading` 或整个文件 digest；heading 可重复、cursor 可能为空或落后、append 会持续改变文件 digest。
-
-### 10.5 必须处理的真实冲突
-
-| 场景 | 安全结果 |
-|---|---|
-| cancelled 旧 Task 与 active 新 Task 共享 Workspace / manifest / log | 保留两个 UUID 和各自绑定；报告共享及 manifest identity mismatch，不合并 |
-| manifest 存在但 registry 缺少 Task | 生成 Task 候选并报告来源差异，不丢 manifest |
-| registry 或 cursor 早于日志 | 导入新增 ProgressEvent，不覆盖 status |
-| cursor 为空但日志已有内容 | 从头按 section identity 扫描并去重 |
-| Agent session 未登记 | 保持 unknown，不从进程、目录或作者名猜测 |
-| 已 promoted Backlog 的目标存在 | 保留来源与目标链接，不重复创建 |
-| 同 Parent 下 key 冲突 | 确定性生成安全 key 并报告，不丢节点 |
-| Context 含敏感文件 | 完全不扫描、不摘要、不在错误或报告中回显正文 |
-| Parent 类型非法、父链成环或身份含糊 | blocker；不自动改挂 Root或改变节点类型 |
-| 未识别 legacy 字段 | 保留在 ImportRecord 的 source snapshot / extension 中，不塞进领域对象的通用 JSON |
-
-### 10.6 冻结真实快照的预期结果
-
-2026-09-21 08:55 的只读快照应得到：
-
-| 项目 | 预期 |
-|---|---:|
-| Project slug | 5 |
-| legacy Task | 13 |
-| 非空 legacy next_action | 12 |
-| Backlog | 3 |
-| manifest | 12 |
-| 不同 agent_log.md | 12 |
-| 日志 section / ProgressEvent 计划 | 157 |
-| TodayItem | 0 |
-| ResourceBinding | 39 |
-| WorkNode 总数 | 34：1 Root + 5 Project + 25 Task + 3 Backlog |
-
-冻结报告 digest 为：
-
-```text
-b87311efb576fa616c273b053d06969ef808620a3e670b67027ad99f7c356196
-```
-
-该快照预期 blocker 为 0，但包含共享资源、manifest identity mismatch、同级 key 冲突和 log cursor 落后等 warning。
-
-### 10.7 Cutover 与回退
-
-切换分为：
-
-1. **兼容模式**：只做 dry-run 和只读日志同步；SQLite 尚不是结构化事实源。
-2. **核对模式**：用户确认 Work Tree、Project UUID、legacy Root Task、next_action Child Task、Backlog Parent 和冲突处理。
-3. **切换前**：创建数据库备份、legacy registry 快照、完整报告，并记录 cutover timestamp。
-4. **切换后**：SQLite + API / MCP 成为 Work Tree、状态和 Today 的权威来源；registry 只作快照或导出，不再双向写。
-5. **持续兼容**：Workspace、manifest、日志、Context 和 coordination 留在原位；日志可继续只读增量同步。
-6. **回退**：停止新系统写入，恢复切换前数据库或放弃新库；不得把新库内容静默反写 legacy YAML。新库独有写入应先结构化导出。
-
-## 11. 本地运行架构
-
-阶段 3 固定采用：
-
-```text
-Tauri 2 desktop app
-React + TypeScript UI
-Rust application/domain core
-SQLite local database
-stdio MCP companion
-loopback HTTP API（仅应用运行期间在线）
-```
-
-运行要求：
-
-- 用户日常只需启动 `Agent Workbench.app`，不手工维护数据库、Web server 或 daemon。
-- React 不直接访问 SQLite、文件系统或 shell。
-- Tauri IPC、HTTP 和 MCP 只是 adapter，共用一套领域命令。
-- stdio MCP 由 MCP host 按需启动；stdout 只输出协议帧，日志写 stderr 或文件。
-- HTTP 只绑定 `127.0.0.1` / `::1`，使用高熵 token，并验证 Host / Origin。
-- 应用退出后 HTTP 端口释放；MVP 不增加常驻 LaunchAgent。
-- SQLite 数据位于 macOS Application Support 中的产品目录；正式 bundle identifier 由实现冻结。
-- 仓库根 `install.sh` 从当前 checkout 构建并以用户权限安装或更新 `Karazhan.app`、stdio MCP companion、Medivh Hermes Profile 中明确列出的托管文件、Medivh 窄权限 Karazhan Skill、非扫描的 Custodian startup package 与 `medivh` 命令；它还以冲突即停止的方式只补齐 Medivh Profile 的 `mcp_servers.karazhan.command` 和 `KARAZHAN_DATABASE_PATH` 两个配置叶子，不执行 `git pull`，不覆盖检测到本地修改的托管文件或不同的现有 MCP 配置，也不改写其他 Hermes 配置和运行状态。`memories/USER.md`、其他 memories、sessions 与非托管 Skills 始终归用户所有，不纳入 baseline、不替换也不删除。
-- 普通 release build 只生成可执行文件，不在 repository target 中留下可被 Launch Services 发现的 `.app`；`install.sh` 在临时 target 中生成安装 bundle，安装完成后仅保留 `~/Applications/Karazhan.app`，避免同一 bundle identifier 出现两份可启动副本。
-- 全部托管组件使用同一个 commit 派生安装版本：`tauri.conf.json` 提供基础 `major.minor`，完整 Git 历史中 `HEAD` 可达 commit 数作为 patch；构建通过临时 Tauri 配置把该版本写入 App，不修改 tracked 文件。正常安装要求非 shallow checkout 且不存在 tracked 未提交修改，并为每个目标分别记录内容 baseline、已部署版本与完整 commit SHA。安装版本更高才更新已有目标，相同版本为 no-op，降级拒绝；缺失目标可补装。首次接管无版本的已有托管目标前必须生成同目录时间戳备份，内容完全一致时可直接建立 baseline。`KARAZHAN_INSTALL_SKIP_APP=1` 跳过 App 构建、校验和安装，但继续处理 MCP 与 Medivh 组件。安装结束逐项目标报告新建、接管与备份、更新、no-op 或跳过状态。
-- `medivh` 命令以前台方式启动 `hermes -p medivh chat`；启动前同时检查对应 Hermes 进程与 PID lock，活动实例存在时拒绝重复启动，只清理由 launcher 留下且 owner PID 已不存在的陈旧 lock。
-- 构建所需外网默认经本机 `127.0.0.1:7897` 代理；缺少仓库固定版本的 Rust 工具链时，安装脚本先通过官方 rustup 安装到标准用户目录，不依赖临时工具链路径；脚本通过代理显式执行锁文件约束的 Cargo 依赖下载，之后再执行离线 Rust 构建；代理可由显式安装参数覆盖。
-
-Tauri Spike 已验证共享 core、SQLite、HTTP、stdio MCP、安全 Open in Zed、100 行拖拽和重启持久化。正式开发仍需补充可重复的 5 次 GUI 冷启动、空闲 60 秒 CPU / RSS 以及适当的 GUI 验收证据；它们不改变产品模型。
-
-## 12. 数据可靠性、备份与恢复
-
-### 12.1 数据库约束
-
-SQLite 必须直接或通过领域事务保证：
-
-- 固定且不可修改、移动、删除的唯一 Root；
-- 合法父子类型、无环、类型不可变；
-- 同 Parent key 和 position 唯一；
-- Project / Task / Backlog 节点与对应类型数据完整匹配；
-- Today 只引用 Project / Task；
-- ProgressEvent 和 ResourceBinding 只引用 Project / Task；
-- imported ProgressEvent 的来源身份唯一，且 source binding 属于同一 subject；
-- Backlog promotion 只指向 Project / Task。
-
-### 12.2 Schema migration
-
-- 每次连接启用 foreign key；运行时配置 WAL 和有界 busy timeout。
-- migration 使用固定编号和 checksum；已应用版本 checksum 不匹配时停止写入。
-- App 与 MCP 使用进程间锁，不能并发迁移；竞争方收到 `migration_busy`。
-- 升级前先 WAL checkpoint，再用 SQLite online backup 创建完整备份；不能在 WAL 活跃时简单复制主文件。
-- 备份必须先通过 integrity check；migration 在事务中执行，失败即 rollback。
-- MVP 不做会丢数据的 down migration。
-
-### 12.3 恢复与导出
-
-- 恢复先写临时路径，验证 integrity、foreign keys 和核心对象计数，再原子替换目标数据库。
-- 失败库保留供诊断，不自动删除。
-- 结构化备份至少覆盖 Work Tree、类型字段、ResourceBinding、Today 和 ProgressEvent，并附引用清单。
-- 数据库备份不声称备份了 Workspace、Context 或日志正文。
-- 只有用户明确选择“完整本地备份”时，才复制 Context 目录；不得自动上传或扩散敏感文件。
-
-## 13. 性能、可用性与隐私
-
-### 13.1 性能和故障隔离
-
-- 正常本地规模下，Today 和 Projects & Tasks 应接近即时打开。
-- 导入、日志同步、路径检查和索引工作必须异步，不能阻塞主要 UI。
-- 100 行的滚动、展开、折叠和双向拖拽应保持流畅，拖拽落点清楚。
-- 单个坏 YAML、坏日志、缺失路径或损坏 Project 不能使整个产品不可用。
-- HTTP 启动失败时桌面 UI 仍可用，并明确显示 Agent API unavailable；不能静默换端口。
-
-### 13.2 安全与隐私
-
-- 数据默认只保存在本机。
-- 不记录、复制或回显密码、Token、私钥及 Context 中的敏感正文。
-- 前端不能提供任意路径读取或任意命令执行能力。
-- 导入和路径解析受 trusted root、显式 scope、canonicalization 和软链边界约束。
-- 所有写入保留 actor、来源和时间；导入事件还保留 source item identity 与 digest。
-- 阶段 3 不提供 LAN、公网或远程 MCP 访问。
-
-## 14. 明确不做
-
-以下内容不属于阶段 3 MVP：
-
-- 内嵌对话 Assistant；
-- Agent session 启动、恢复、控制或多 Agent 调度；
-- Git worktree、分支或 Workspace 生命周期管理；
-- Project Background 阅读 / 编辑页面；
-- Context 文件索引、全文检索、摘要、向量库、RAG 或 Memory；
-- TodoItem、唯一 next_action、Comment、Activity Interval、started / ended 计时；
-- overdue、due date、milestone、risk、decision item；
-- 通用 ChangeLog 或领域对象上的 metadata / payload JSON；
-- Inbox；
-- Search 页面与统一搜索能力（延期，以后另行立项）；
-- Settings / Import 页面、legacy 导入、日志同步和真实阶段 2.5 cutover / rollback（延期，以后另行立项）；
-- 多用户、团队 SaaS、RBAC、计费、移动端；
-- LAN / 公网访问、云同步、PostgreSQL、账号认证；
-- 常驻 daemon / LaunchAgent；
-- Plane API 或数据格式兼容；
-- 通用插件市场或工作流引擎。
-
-说明：Backlog tags、ProgressEvent evidence 以及 ImportRecord 报告快照属于有明确用途的结构数据，不是用于逃避领域建模的通用 JSON 字段。
-
-## 15. MVP 验收场景
-
-### 15.1 Work Tree 与业务规则
-
-1. 空库创建唯一固定 Root；第二个 Root、修改 / 移动 / 删除 Root 均被拒绝。
-2. 所有允许父子关系可创建；Task→Project、Backlog→任意 Child 和形成环的移动被拒绝。
-3. 创建无 slug、Workspace 和 Context 的 Project 成功，之后可分别补充。
-4. 同一非空 Project slug、同 Parent key 或 position 冲突被拒绝，原顺序不被部分破坏。
-5. 独立 Task、Project 一级 Task 和多层 Child Task 都能展示、移动和重排。
-6. “轻量行动项”创建为普通 Child Task；数据库不存在 TodoItem、TaskItem 或 next_action 副本。
-7. Project / Task 当前字段变化与 ProgressEvent 保持同事务一致。
-8. `pending` 可用、`waiting` 不能直接写入；blocker 与任意工作状态正交。
-
-### 15.2 Today 与页面交互
-
-9. Project 和 Task 可以加入 Today，Backlog 不能加入。
-10. Today 顺序可拖拽并在重启后保持，且不改变 priority、status 或树内 position。
-11. Parent 与直接 Child 同时在 Today 时保留两条 membership，Parent 展开区抑制重复；移除 Child membership 后恢复内嵌显示。
-12. Today 默认展开、逐行折叠和 Expand / Collapse all 均可用；展开只显示一级直接 Child Task，并能查看或追加 Steps；圆形 `+` 创建的 Quick item 可勾选、排序和删除，且不出现在 Projects & Tasks。
-13. Projects & Tasks 以缩进递归展示 Project / Task，支持顶层和上下文创建、Add step、递归 Archive；Archive 可 Reopen，并只允许确认后永久删除已归档子树，Reopen 不恢复旧 Today membership。Backlog 默认隐藏 promoted / discarded 条目，正确显示 Description 及对齐的 kind、priority、tags。
-14. Backlog 可从圆形 `+` 创建完整条目；右键 Edit / Move / Discard / Promote 各自独立；跨 Parent 拖拽原子更新 Parent 与位置；Promote 重试不重复创建目标。
-15. **Search（延期，不计入当前 MVP 验收）**：未来可按标题、状态、优先级、Parent、slug / ID、blocker、Backlog 标签和资源路径找到对象。
-
-### 15.3 导入与同步（延期，场景 16–24 不计入当前 MVP 验收）
-
-16. 冻结快照 dry-run 产生 34 WorkNode、39 ResourceBinding、157 ProgressEvent 计划和 0 TodayItem，canonical report digest 与基线一致。
-17. 5 个 Project 使用独立 UUIDv5；13 个 legacy Task 保留 UUID；5 个 legacy Root Task 成为 Project 一级 Task。
-18. 12 个 next_action 生成 12 个确定性 Child Task；没有 Todo / next_action 重复数据。
-19. 共享 Workspace 的 cancelled / active Task 均被保留；同一 locator 可以关联多个节点。
-20. manifest-without-registry、空 / 落后日志 cursor、`waiting` 映射、promoted Backlog 和同级 key 冲突均有固定测试。
-21. 同一快照重复 dry-run 结果一致；apply 后重放不增加节点、绑定或事件。
-22. dry-run 后来源发生变化时 apply 被拒绝；单记录失败产生明确 partial failure，不损坏无关对象。
-23. Context 和 coordination 内容从未被扫描、摘要、复制或写入错误输出。
-24. 连续同步同一日志 section 两次不产生重复 Event；同 key 内容变更报告冲突且不覆盖原 Event。
-
-### 15.4 接口、本地集成和恢复
-
-25. UI、HTTP 与 MCP 对同一领域命令产生相同结果和错误语义。
-26. Custodian 能创建 Child Task、追加 progress、维护 Today 并查询 Project / Task 汇总。
-27. Open in Zed 只接受节点 ID；当前用户 home 或应用数据 Workspace root 内的 available primary Workspace 可打开，缺失、越界和注入路径被安全拒绝；结构化失败信息在 Today 行内完整可见且不覆盖相邻控件。
-28. 应用启动时 HTTP 需要 token；应用退出后端口释放；stdio MCP 不向 stdout 写协议外日志。
-29. App 与 MCP 并发启动 migration 时只有一个执行；另一个得到明确错误。
-30. 当前可见的 Today 与 Projects & Tasks 在外部写入后约 1 秒内刷新，并在 focus / visibility 恢复时立即刷新；后台刷新不重置展开状态、不产生重叠请求或相同快照重渲染。
-31. **Import 恢复演练（延期，不计入当前 MVP 验收）**：完成一次 dry-run → apply → replay no-op → migration 故障 → restore → 核心计数核对演练。
-32. 恢复后外部路径缺失只更新 availability，不删除节点或阻断其他页面。
-33. 正式开发补齐 5 次 GUI 冷启动、空闲 CPU / RSS 和关键桌面交互验收证据。
-34. Medivh Profile 安装后可发现窄权限 Karazhan Skill，并通过已配置的 `karazhan-mcp` 对持久化且已验证的顶层 Workspace 执行幂等 Project 创建/查询和 primary Workspace binding 登记/查询；还可以按用户明确请求，在 Root 或用户明确指定且经查询确认的 Project / Task 下幂等新增、查询 Backlog。写入保留 `medivh` actor provenance，现有不同 MCP 配置不被静默覆盖，且 Medivh 仍不能管理 Child、Today、progress、业务字段、状态、既有 Backlog 编辑/移动/Discard/Promote 或 Custodian session。
-35. Today 中的 Project 展开后显示未单独进入 Today 的递归 Child Project / Task；独立 Today Child 及其子树不在 Parent 卡片重复。Parent Recent steps / Action log 聚合该可见子树的业务事件、排除审计事件，并为后代事件标明来源。
-36. Action log 写入使用短概要和可选 verbose 详情两个独立字段；旧概要-only 事件继续可读，幂等摘要包含详情。Recent steps 等紧凑投影只显示概要，切换到完整 Action log 后才显示详情。
-
-## 16. 定稿确认
-
-以下四项来自旧原型与新 Work Tree 的结合处，已经随本文整体评审一并确认：
-
-1. **Projects & Tasks 默认折叠**：本文采用“树层级可见，Task 详情默认折叠；Project 范围可一键展开 / 折叠”。
-2. **Child Task 的轻量完成交互**：本文允许使用 checkbox 外观，但它只能修改 Task status，不能引入 Todo 完成字段。
-3. **Backlog 排序范围**：本文最初采用同一 Parent 内拖拽排序；2026-09-25 用户评审已改为允许跨可见行拖拽，并原子完成跨 Parent 移动与定位。
-4. **Search 是否纳入 MVP**：本文最初保留独立 Search；2026-09-25 用户决定当前阶段不做、以后再议，因此 Search 入口和场景 15 均不进入当前 MVP 验收。
-
-本文其余数据语义、迁移口径、运行边界和验收场景也已确认。后续 TDD Child 必须只以本文为需求事实源；现有 schema、dry-run 和验证矩阵可以作为实现输入与证据，但不得覆盖本文。
-
-2026-09-24 至 2026-09-25 的用户评审进一步确认：正式产品名为 Karazhan；系统 Root 在界面隐藏；Project / Task UI 创建、递归 Archive、Archive 后永久删除、紧凑 status / priority 编辑、手工 Step 与 Projects & Tasks 的统一详情卡片进入 MVP。Projects & Tasks 的该轮桌面视觉已由用户验收通过。
-
-2026-09-25 的 Backlog 桌面评审进一步确认：Backlog 使用右键操作、圆形 `+` 创建、无可见 status、Description 与对齐元数据、跨 Parent 原子拖拽；Today 增加普通 Task 语义的 Quick item；Archive 增加不恢复 Today membership 的 Reopen。该轮实现与桌面视觉已由用户验收通过。
+Keep credentials, personal Context, local Agent configuration, execution logs, reports, screenshots, and database files outside tracked source. Tests must not read personal data or migrate real Workspaces. The App stores data locally and offers no remote multi-user access or cloud sync.

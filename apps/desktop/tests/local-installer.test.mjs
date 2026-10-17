@@ -6,6 +6,7 @@ import {
   mkdtemp,
   mkdir,
   readdir,
+  rm,
   readFile,
   stat,
   writeFile,
@@ -30,6 +31,53 @@ async function waitFor(pathname, timeoutMs = 3_000) {
   }
   throw new Error(`timed out waiting for ${pathname}`);
 }
+
+test("dependency preflight warns and continues for missing Apps or cmux CLI", async (t) => {
+  const source = await readFile(installer, "utf8");
+  const start = source.indexOf("check_desktop_dependencies() {");
+  const end = source.indexOf("\ncheck_desktop_dependencies /Applications", start);
+  assert.ok(start >= 0 && end > start, "dependency preflight must exist");
+  const probe = `${source.slice(start, end)}\ncheck_desktop_dependencies "$1" "$2"\nprintf 'continued\\n'`;
+  const root = await mkdtemp(path.join(tmpdir(), "karazhan-dependencies-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const systemApps = path.join(root, "system-apps");
+  const userApps = path.join(root, "user-apps");
+  const bin = path.join(root, "bin");
+  await mkdir(bin);
+  const run = () => spawnSync("/bin/sh", ["-c", probe, "probe", systemApps, userApps], {
+    env: { PATH: bin }, encoding: "utf8",
+  });
+  const absent = run();
+  assert.equal(absent.status, 0, absent.stderr);
+  assert.match(absent.stdout, /continued/);
+  assert.match(absent.stderr, /cmux is not installed/);
+  assert.match(absent.stderr, /Claude.*notifications/);
+  assert.match(absent.stderr, /Zed is not installed/);
+  assert.match(absent.stderr, /Open in Zed/);
+  assert.match(absent.stderr, /https:\/\/github.com\/manaflow-ai\/cmux/);
+  assert.match(absent.stderr, /https:\/\/zed.dev\/docs\/macos/);
+
+  await mkdir(path.join(systemApps, "cmux.app"), { recursive: true });
+  await mkdir(path.join(userApps, "Zed.app"), { recursive: true });
+  const appOnly = run();
+  assert.equal(appOnly.status, 0, appOnly.stderr);
+  assert.match(appOnly.stdout, /continued/);
+  assert.match(appOnly.stderr, /cmux App is installed.*CLI.*PATH/);
+  assert.doesNotMatch(appOnly.stderr, /Zed is not installed|cmux is not installed/);
+
+  await rm(systemApps, { recursive: true });
+  await mkdir(path.join(userApps, "cmux.app"), { recursive: true });
+  assert.match(run().stderr, /cmux App is installed/);
+  await rm(userApps, { recursive: true });
+  for (const command of ["cmux", "zed"]) {
+    await writeFile(path.join(bin, command), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(bin, command), 0o755);
+  }
+  const commands = run();
+  assert.equal(commands.status, 0, commands.stderr);
+  assert.match(commands.stdout, /continued/);
+  assert.equal(commands.stderr, "");
+});
 
 test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   const installerSource = await readFile(installer, "utf8");
@@ -58,6 +106,8 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   const cargoHome = path.join(root, ".cargo");
   const rustupHome = path.join(root, ".rustup");
   const cargoLog = path.join(root, "cargo.log");
+  const networkLog = path.join(root, "network.log");
+  const recordProxy = 'printf "http=%s https=%s all=%s lower=%s args=%s\\n" "${HTTP_PROXY:-}" "${HTTPS_PROXY:-}" "${ALL_PROXY:-}" "${https_proxy:-}" "$*" >> "$KARAZHAN_TEST_NETWORK_LOG"';
   const mcpCommandConfig = path.join(profileDirectory, "mock-mcp-command");
   const mcpDatabaseConfig = path.join(profileDirectory, "mock-mcp-database");
   const rustTarget =
@@ -82,7 +132,7 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
   await writeFile(mcpSource, "#!/bin/sh\nexit 0\n");
   await chmod(mcpSource, 0o755);
   await mkdir(mockBin, { recursive: true });
-  await writeFile(path.join(mockBin, "npm"), "#!/bin/sh\nexit 0\n");
+  await writeFile(path.join(mockBin, "npm"), `#!/bin/sh\n${recordProxy}\nexit 0\n`);
   await writeFile(path.join(mockBin, "pgrep"), "#!/bin/sh\nexit 1\n");
   await chmod(path.join(mockBin, "npm"), 0o755);
   await chmod(path.join(mockBin, "pgrep"), 0o755);
@@ -90,6 +140,7 @@ test("local installer owns safe Karazhan and Medivh updates", async (t) => {
     path.join(mockBin, "curl"),
     `#!/bin/sh
 set -eu
+${recordProxy}
 output=
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output" ]; then
@@ -102,16 +153,19 @@ done
 cat > "$output" <<'RUSTUP_INIT'
 #!/bin/sh
 set -eu
+${recordProxy}
 mkdir -p "$CARGO_HOME/bin"
 cat > "$CARGO_HOME/bin/rustup" <<'RUSTUP'
 #!/bin/sh
 set -eu
+${recordProxy}
 toolchain=$3
 target=${rustTarget}
 bin="$RUSTUP_HOME/toolchains/$toolchain-$target/bin"
 mkdir -p "$bin" "$RUSTUP_HOME/toolchains/$toolchain-$target/lib"
 cat > "$bin/cargo" <<'CARGO'
 #!/bin/sh
+${recordProxy}
 printf 'dyld=%s args=%s\\n' "\${DYLD_LIBRARY_PATH:-}" "$*" >> "$KARAZHAN_TEST_CARGO_LOG"
 CARGO
 cat > "$bin/rustc" <<'RUSTC'
@@ -179,6 +233,7 @@ fi
     CARGO_HOME: cargoHome,
     RUSTUP_HOME: rustupHome,
     KARAZHAN_TEST_CARGO_LOG: cargoLog,
+    KARAZHAN_TEST_NETWORK_LOG: networkLog,
     KARAZHAN_INSTALL_ALLOW_DIRTY: "1",
     KARAZHAN_INSTALL_SKIP_BUILD: "0",
     KARAZHAN_INSTALL_APP_SOURCE: appSource,
@@ -196,11 +251,21 @@ fi
       encoding: "utf8",
     });
 
+  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy", "KARAZHAN_INSTALL_PROXY"]) {
+    delete env[key];
+  }
   const first = run();
   assert.equal(first.status, 0, first.stderr);
   await stat(
     path.join(rustupHome, `toolchains/1.98.1-${rustTarget}/bin/cargo`),
   );
+  const defaultNetwork = await readFile(networkLog, "utf8");
+  assert.ok(defaultNetwork.trim().split("\n").every((line) => line.startsWith("http= https= all= lower= args=")), defaultNetwork);
+  assert.match(defaultNetwork, /https:\/\/sh.rustup.rs/);
+  assert.match(defaultNetwork, /args=toolchain install/);
+  assert.match(defaultNetwork, /args=fetch --locked/);
+  assert.match(defaultNetwork, /args=ci/);
+  assert.match(defaultNetwork, /args=--workspace @karazhan\/desktop run tauri/);
   const cargoCalls = await readFile(cargoLog, "utf8");
   assert.match(cargoCalls, /args=fetch --locked$/m);
   assert.equal(
@@ -346,7 +411,14 @@ fi
   );
 
   await writeFile(path.join(appSource, "Contents", "MacOS", "Karazhan"), "same-version-change\n");
+  env.HTTP_PROXY = "http://inherited.example:8080";
+  env.HTTPS_PROXY = "http://secure.example:8081";
+  env.ALL_PROXY = "socks5://all.example:8082";
+  env.https_proxy = "http://lower.example:8083";
+  await writeFile(networkLog, "");
   const update = run();
+  const inheritedNetwork = await readFile(networkLog, "utf8");
+  assert.ok(inheritedNetwork.trim().split("\n").every((line) => line.startsWith("http=http://inherited.example:8080 https=http://secure.example:8081 all=socks5://all.example:8082 lower=http://lower.example:8083 args=")), inheritedNetwork);
   assert.equal(update.status, 0, update.stderr);
   assert.equal(
     await readFile(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"), "utf8"),
@@ -355,7 +427,13 @@ fi
   assert.match(update.stdout, /no-op/i);
 
   env.KARAZHAN_INSTALL_VERSION = "0.2.0";
+  env.KARAZHAN_INSTALL_PROXY = "http://override.example:8084";
+  await writeFile(networkLog, "");
+  await rm(cargoHome, { recursive: true });
+  await rm(rustupHome, { recursive: true });
   const upgrade = run();
+  const overrideNetwork = await readFile(networkLog, "utf8");
+  assert.ok(overrideNetwork.trim().split("\n").filter((line) => !line.includes("args=build --offline")).every((line) => line.startsWith("http=http://override.example:8084 https=http://override.example:8084 all=http://override.example:8084 lower=http://override.example:8084 args=")), overrideNetwork);
   assert.equal(upgrade.status, 0, upgrade.stderr);
   assert.equal(
     await readFile(path.join(appDirectory, "Karazhan.app/Contents/MacOS/Karazhan"), "utf8"),

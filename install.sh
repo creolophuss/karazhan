@@ -15,7 +15,7 @@ MCP_SOURCE=${KARAZHAN_INSTALL_MCP_SOURCE:-"$SCRIPT_DIR/target/release/karazhan-m
 PRODUCT_DATABASE_PATH=${KARAZHAN_MEDIVH_DATABASE_PATH:-"$HOME/Library/Application Support/com.jiayi.karazhan/karazhan.sqlite3"}
 SKIP_BUILD=${KARAZHAN_INSTALL_SKIP_BUILD:-0}
 SKIP_APP=${KARAZHAN_INSTALL_SKIP_APP:-0}
-INSTALL_PROXY=${KARAZHAN_INSTALL_PROXY:-http://127.0.0.1:7897}
+INSTALL_PROXY=${KARAZHAN_INSTALL_PROXY:-}
 VERSION_CONFIG="$SCRIPT_DIR/apps/desktop/src-tauri/tauri.conf.json"
 
 die() {
@@ -26,6 +26,46 @@ die() {
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
+
+run_network_command() {
+  if [ -n "$INSTALL_PROXY" ]; then
+    HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
+      http_proxy="$INSTALL_PROXY" https_proxy="$INSTALL_PROXY" all_proxy="$INSTALL_PROXY" \
+      "$@"
+  else
+    "$@"
+  fi
+}
+
+check_desktop_dependencies() {
+  if command -v cmux >/dev/null 2>&1; then
+    :
+  elif [ -d "$1/cmux.app" ] || [ -d "$2/cmux.app" ]; then
+    printf '%s\n' \
+      'karazhan install: warning: cmux App is installed, but the cmux CLI is not on PATH.' \
+      'Claude Context notifications need the CLI on PATH and a running cmux session.' \
+      'See https://github.com/manaflow-ai/cmux for CLI setup. Installation will continue.' >&2
+  else
+    printf '%s\n' \
+      'karazhan install: warning: cmux is not installed or not discoverable.' \
+      'Claude Context notifications and cmux terminal collaboration will be unavailable.' \
+      'Install from https://github.com/manaflow-ai/cmux or run:' \
+      '  brew tap manaflow-ai/cmux' \
+      '  brew install --cask cmux' \
+      'Installation will continue.' >&2
+  fi
+
+  if command -v zed >/dev/null 2>&1 || [ -d "$1/Zed.app" ] || [ -d "$2/Zed.app" ]; then
+    :
+  else
+    printf '%s\n' \
+      'karazhan install: warning: Zed is not installed or not discoverable. Open in Zed will be unavailable.' \
+      'Install from https://zed.dev/docs/macos or run: brew install --cask zed' \
+      'Installation will continue. The optional Zed CLI is not required.' >&2
+  fi
+}
+
+check_desktop_dependencies /Applications "$HOME/Applications"
 
 if [ -n "${KARAZHAN_HERMES_COMMAND:-}" ]; then
   HERMES_COMMAND=$KARAZHAN_HERMES_COMMAND
@@ -324,18 +364,15 @@ resolve_rust_bin() {
     printf 'karazhan install: Rust %s is missing; installing rustup in %s\n' \
       "$rust_channel" "$cargo_home" >&2
     rustup_installer="$INSTALL_TMP/rustup-init.sh"
-    HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-      curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+    run_network_command curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
         https://sh.rustup.rs --output "$rustup_installer"
     CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home" \
-      HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-      sh "$rustup_installer" -y --profile minimal --default-toolchain none
+      run_network_command sh "$rustup_installer" -y --profile minimal --default-toolchain none
   fi
 
   [ -x "$rustup_command" ] || die "rustup installation did not create: $rustup_command"
   CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home" \
-    HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-    "$rustup_command" toolchain install "$rust_channel" --profile minimal \
+    run_network_command "$rustup_command" toolchain install "$rust_channel" --profile minimal \
       --component clippy --component rustfmt
 
   select_rust_bin "$rustup_home/toolchains/$rust_channel-$rust_target/bin" || \
@@ -359,14 +396,12 @@ if [ "$SKIP_BUILD" != 1 ]; then
     else
       rust_dyld_library_path="$rust_sysroot/lib"
     fi
-    HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-      CARGO_NET_OFFLINE=false "$RUST_BIN/cargo" fetch --locked
+    CARGO_NET_OFFLINE=false run_network_command "$RUST_BIN/cargo" fetch --locked
     if [ "$SKIP_APP" != 1 ]; then
-      HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" npm ci
-      HTTP_PROXY="$INSTALL_PROXY" HTTPS_PROXY="$INSTALL_PROXY" ALL_PROXY="$INSTALL_PROXY" \
-        CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$INSTALL_TMP/app-target" \
+      run_network_command npm ci
+      CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$INSTALL_TMP/app-target" \
         DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
-        npm --workspace @karazhan/desktop run tauri -- build --config "$TAURI_VERSION_CONFIG"
+        run_network_command npm --workspace @karazhan/desktop run tauri -- build --config "$TAURI_VERSION_CONFIG"
     fi
     DYLD_LIBRARY_PATH="$rust_dyld_library_path" \
       "$RUST_BIN/cargo" build --offline --release -p karazhan-mcp
