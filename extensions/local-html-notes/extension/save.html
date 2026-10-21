@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地 HTML 批注 · 保存</title>
+  <link rel="stylesheet" href="save.css">
+  <script src="core.js" defer></script>
+  <script src="handles.js" defer></script>
+  <script src="save.js" defer></script>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">LOCAL HTML NOTES · EDGE</div>
+    <h1>批注留在文件里。</h1>
+    <p class="lead">高亮、评论和查看脚本一起写入原 HTML。扩展只记住文件授权，无备份，无服务。</p>
+    <section aria-labelledby="file-heading">
+      <h2 id="file-heading">保存到原文件</h2>
+      <p id="filename">打开本地 HTML 后，点击页面右上角的「保存」。</p>
+      <p id="status" role="status">首次保存需要选择原 HTML，并允许写入。</p>
+      <div class="actions">
+        <button id="choose" disabled>选择原文件并保存</button>
+        <button id="again" class="secondary" hidden>保存当前修改</button>
+        <button id="return" class="secondary" hidden>返回报告</button>
+        <button id="forget" class="secondary" hidden>忘记此文件</button>
+      </div>
+      <p id="storage-status" class="small" role="status"></p>
+      <p class="small">首次选择原文件后会记住授权。以后点击报告页的「保存」即可写回并返回报告，关闭本页后也可复用。权限失效时只需点击确认授权。请选原文件；同名副本不能通过浏览器路径自动区分。</p>
+    </section>
+    <section>
+      <h2>使用方法</h2>
+      <ol>
+        <li>在 <code>edge://extensions</code> 开启开发人员模式，加载本扩展目录。</li>
+        <li>进入扩展详情，开启「允许访问文件 URL」，再刷新本地 HTML。</li>
+        <li>选中文字，点击颜色高亮；双击高亮打开评论对话，输入后点击「添加回复」。</li>
+        <li>点击高亮可以改色、删除。点击评论角标查看历史，可编辑、删除自己的消息。</li>
+        <li>首次点击「保存」，在本页选择原文件并授权；成功后自动返回报告。后续保存复用授权，通常不用重新选文件。</li>
+        <li>将已保存的 HTML 交给 LLM，按项目使用说明中的提示词写回回复。完成后刷新报告页，可继续回复并保存。LLM 消息在界面中只读。</li>
+      </ol>
+      <p class="small">支持 UTF-8 HTML 和脚本生成的正文。保存后，原报告脚本继续运行，批注在正文生成或更新后恢复；其他浏览器不安装扩展也能查看。PDF 和跨报告批注迁移不在本期范围。</p>
+    </section>
+    <footer>文件选择或写入失败时，不会清除页面中的未保存批注。请保留报告页并重试。</footer>
+  </main>
+</body>
+</html>

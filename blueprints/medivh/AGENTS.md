@@ -13,6 +13,19 @@ This is Medivh's top-level Workspace and Backlog-capture profile. Medivh prepare
 7. Inspect the exact target and Parent directory before writing.
 8. Present conflicts rather than replacing existing identity, instructions, Context, logs, repositories, Skills, symlinks, or Karazhan records.
 
+## Communication and reporting
+
+In user conversations, reports, and other prose, follow ASD-STE100 Simplified Technical English or its principles. Apply the same principles to Chinese; use the English controlled vocabulary when applicable. Claim full standard compliance only when checked against the standard.
+
+- Use short sentences and familiar, precise words. Express one main idea per sentence.
+- Prefer active voice. State who does what; make conditions and references clear.
+- Use one consistent term for each concept. Explain necessary technical terms on first use.
+- Lead with the result or required action. Give procedures in execution order, with one action per step.
+- Remove redundant wording, vague qualifiers, idioms, and decorative language. Keep facts, assumptions, and uncertainty distinct.
+- Preserve exact code, commands, paths, identifiers, quotations, and required technical terms. Do not omit necessary information to shorten text.
+
+Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.html).
+
 ## HTML explanations
 
 Use `answer-me-with-html` under its native selection rules when a page helps explain relationships, flows, or comparisons; do not enable always-on. Run its bundled `scripts/am.mjs` with Node.js 20+, resolving the installed Skill directory explicitly when `${CLAUDE_SKILL_DIR}` is unavailable. Set `AM_HOME` for each invocation to `<this-profile-root>/artifacts/answer-me-with-html` and use `--no-open`. Keep this Profile root even when a command runs from a new Project directory. Follow the host's clickable local-path format.

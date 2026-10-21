@@ -8,6 +8,19 @@ Read [README.md](README.md) and [docs/product-requirements.md](docs/product-requ
 
 Reuse available context during continuous work. Read relevant files again after context loss, known external changes, or a conflict. Keep changes small and tied to the requested outcome. Do not add deferred features or unrelated refactors.
 
+## Communication and reporting
+
+In user conversations, reports, and other prose, follow ASD-STE100 Simplified Technical English or its principles. Apply the same principles to Chinese; use the English controlled vocabulary when applicable. Claim full standard compliance only when checked against the standard.
+
+- Use short sentences and familiar, precise words. Express one main idea per sentence.
+- Prefer active voice. State who does what; make conditions and references clear.
+- Use one consistent term for each concept. Explain necessary technical terms on first use.
+- Lead with the result or required action. Give procedures in execution order, with one action per step.
+- Remove redundant wording, vague qualifiers, idioms, and decorative language. Keep facts, assumptions, and uncertainty distinct.
+- Preserve exact code, commands, paths, identifiers, quotations, and required technical terms. Do not omit necessary information to shorten text.
+
+Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.html).
+
 ## Engineering boundaries
 
 - React uses the central TypeScript client. It does not access SQLite, files, or a shell directly.

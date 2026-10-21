@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>脚本生成的报告</title>
+<style>body{max-width:760px;margin:80px auto;padding:0 24px;font:18px/1.9 system-ui;color:#302c26;background:#fffdf8}h1{font-size:28px}</style>
+<noscript><p>请启用 JavaScript 查看报告。</p></noscript>
+</head>
+<body>
+<h1>动态季度报告</h1>
+<main id="report"></main>
+<button id="rerender" type="button">刷新报告内容</button>
+<script>
+  window.renderReport = function (prefix = '') {
+    document.getElementById('report').innerHTML = prefix + '<p id="income">脚本生成的季度收入增长 <strong>20%</strong>，研发投入保持稳定。</p><p id="plan">下一季度将继续交付核心功能。</p>';
+  };
+  document.getElementById('rerender').addEventListener('click', () => renderReport('<p>报告已更新。</p>'));
+  setTimeout(() => renderReport(), 30);
+</script>
+</body>
+</html>
