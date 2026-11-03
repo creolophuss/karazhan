@@ -15,9 +15,28 @@ Medivh may:
 - create or query that top-level Project using the existing local `work.id`;
 - register or query one primary Workspace ResourceBinding for that Project;
 - create or query a new Backlog item under Root or a user-selected Project/Task Parent;
-- append the verified MCP result to the Workspace's `agent_log.md` and update its handoff locator.
+- append the verified MCP result to the Workspace's `agent_log.md`; the primary Medivh maintains its handoff locator.
 
 Medivh must not create Child Projects or Tasks; update fields, status, priority, blocker, Today, or progress; edit, move, discard, or promote existing Backlog items; manage ResourceBinding availability after handoff; or start, assign, monitor, resume, or close a Custodian session. Those operations belong to the owning Custodian or user.
+
+## Delegate MCP operations
+
+These instructions distinguish the primary Agent from its delegated MCP executor. A temporary executor is not a new Custodian or an independent Work owner.
+
+For the primary Agent:
+
+1. Save the local result and decide that registration or user-requested Backlog capture is due. For a Project, persist the intended operation in its existing Workspace log. For Backlog, retain the generated Backlog ID and exact request in the current durable interaction record before delegation; do not create a Workspace just for this record.
+2. Use the runtime's subagent capability. For Project registration, supply the Workspace path and Work ID. For Backlog capture, supply the current Medivh Profile/interaction-record locator and Backlog ID; a Workspace and Work ID are not required. In both cases, supply the authorized operation and exact content, evidence locator, role/actor provenance and applicable Skill path. Explicitly identify the task as a delegated MCP executor and prohibit re-delegation. In Codex, use `collaboration.spawn_agent`; other runtimes use their available equivalent.
+3. Keep one active MCP executor per Work or Backlog ID. Reuse it for later operations when possible and execute that target's writes serially. Do not launch overlapping writes to the same object or send a second copy of an outstanding request.
+4. Continue independent work. Do not immediately wait for ordinary synchronization. Wait only when the next action requires the verified MCP result. Until verification arrives, report synchronization as pending, separately from completed local work.
+5. If no executor has the required tools and permissions, record the pending operation and continue unaffected work. Do not silently fall back to blocking primary-Agent MCP writes. Delegation does not grant new tools or permissions.
+
+For the delegated MCP executor:
+
+- Execute the existing operation workflow directly. Do not delegate it again. Include prerequisite queries, fresh revisions, durable request recording, writes, independent verification and failure handling in this one assignment.
+- Preserve the delegating role's ownership, allowed operations and actor/ref/channel. Do not infer field changes, acceptance or `done` from the local result.
+- Append only exact requests and necessary pending/failure/verification records to the Project log or the existing Backlog interaction record supplied by the primary Medivh. Do not edit business files, requirements or handoff indexes. The primary Agent owns those files and incorporates verified results when appropriate.
+- Return verified success, failure, conflict or verification pending, with the event/object ID and log locator. Follow the existing identical-replay and conflict rules; do not add retry loops. A session ending does not guarantee that an in-flight executor survives: retain pending intent for recovery.
 
 ## Registration
 

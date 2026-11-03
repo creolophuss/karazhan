@@ -358,6 +358,12 @@ h1 {
   position: fixed;
 }
 
+#today .context-menu button:disabled {
+  color: #aaa398;
+  background: transparent;
+  cursor: default;
+}
+
 .menu-dismiss {
   position: fixed;
   z-index: 19;
@@ -773,9 +779,15 @@ h1 {
 }
 
 .quick-item-description {
-  grid-column: 3;
+  display: block;
   color: #3d3832;
   font-size: 0.9rem;
+}
+
+.quick-item-copy {
+  min-width: 0;
+  grid-column: 3;
+  padding: 0.55rem 0;
 }
 
 .quick-item-delete {
@@ -913,6 +925,18 @@ h1 {
 }
 
 .today-description {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.22rem;
+  color: #898176;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-path {
   display: block;
   overflow: hidden;
   margin-top: 0.22rem;

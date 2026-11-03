@@ -1,5 +1,7 @@
 # File-first Karazhan collaboration
 
+The primary Agent delegates MCP registration and synchronization as described in the Skill's **Delegate MCP operations** section. The delegated executor performs the sequences below directly, including their queries and verification. The primary Agent retains business-file and handoff-index ownership.
+
 ## The invariant
 
 For Custodian-produced facts, local durable files are written first and MCP synchronization happens second.

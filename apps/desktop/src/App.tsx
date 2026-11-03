@@ -5,6 +5,7 @@ import ArchivePage from "./components/ArchivePage";
 import BacklogPage from "./components/BacklogPage";
 import TodayOpenInZed from "./components/TodayOpenInZed";
 import TodayRecentSteps from "./components/TodayRecentSteps";
+import WorkspacePath from "./components/WorkspacePath";
 import WorkItemQuickControls from "./components/WorkItemQuickControls";
 import AddStepModal, { type AddStepTarget } from "./components/AddStepModal";
 import { appendManualStep } from "./features/projects";
@@ -123,6 +124,10 @@ export default function App() {
     expandableItems.every((item) => expandedNodeIds.has(item.node_id));
   const allRowsCollapsed = expandedNodeIds.size === 0;
   const membershipBusy = membershipFeedback.status === "saving";
+  const menuTodayIndex = today.status === "ready"
+    ? today.items.findIndex((item) => item.node_id === stepMenu?.id)
+    : -1;
+  const menuTodayItem = today.status === "ready" ? today.items[menuTodayIndex] : undefined;
 
   async function handleRemove(item: TodayItem) {
     setMembershipFeedback({ status: "saving", message: "Removing…" });
@@ -150,8 +155,8 @@ export default function App() {
     event.stopPropagation();
     setStepMenu({
       ...target,
-      x: Math.min(event.clientX, window.innerWidth - 150),
-      y: Math.min(event.clientY, window.innerHeight - 90),
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 160)),
     });
   }
 
@@ -197,23 +202,17 @@ export default function App() {
     }
   }
 
-  async function handleDrop(targetPosition: number) {
-    if (today.status !== "ready" || draggedNodeId === null) return;
-    const sourceIndex = today.items.findIndex((item) => item.node_id === draggedNodeId);
+  async function handleReorder(nodeId: string, targetPosition: number) {
+    if (today.status !== "ready" || membershipBusy) return;
+    const sourceIndex = today.items.findIndex((item) => item.node_id === nodeId);
     const source = today.items[sourceIndex];
-    if (source === undefined || sourceIndex === targetPosition) {
-      setDraggedNodeId(null);
-      setDropTargetNodeId(null);
-      return;
-    }
+    if (source === undefined || sourceIndex === targetPosition) return;
 
     const previous = today.items;
     setRevealedDeleteNodeId(null);
     const optimistic = moveTodayItem(previous, source.node_id, targetPosition);
     setToday({ status: "ready", items: optimistic });
     setMembershipFeedback({ status: "saving", message: "Saving Today order…" });
-    setDraggedNodeId(null);
-    setDropTargetNodeId(null);
     try {
       await reorderTodayMembership(
         karazhanClient,
@@ -230,6 +229,13 @@ export default function App() {
         message: describeClientError(error),
       });
     }
+  }
+
+  async function handleDrop(targetPosition: number) {
+    const nodeId = draggedNodeId;
+    setDraggedNodeId(null);
+    setDropTargetNodeId(null);
+    if (nodeId !== null) await handleReorder(nodeId, targetPosition);
   }
 
   function beginSwipe(
@@ -390,11 +396,14 @@ export default function App() {
                 const leafTask = item.kind === "task" && childItems.length === 0;
                 const deleteRevealed = revealedDeleteNodeId === item.node_id;
                 if (item.is_quick_item) return (
-                  <li className={`today-row quick-item-row${draggedNodeId === item.node_id ? " dragging" : ""}${dropTargetNodeId === item.node_id ? " drop-target" : ""}`} data-node-id={item.node_id} data-position={item.position} key={item.node_id} onPointerEnter={() => { if (draggedNodeId !== null && draggedNodeId !== item.node_id) setDropTargetNodeId(item.node_id); }} onPointerUp={() => { if (draggedNodeId !== null) void handleDrop(targetPosition); }} onPointerCancel={() => { setDraggedNodeId(null); setDropTargetNodeId(null); }}>
+                  <li className={`today-row quick-item-row${draggedNodeId === item.node_id ? " dragging" : ""}${dropTargetNodeId === item.node_id ? " drop-target" : ""}`} data-node-id={item.node_id} data-position={item.position} key={item.node_id} onContextMenu={(event) => openStepMenu(event, { id: item.node_id, title: item.title, revision: item.work_revision })} onPointerEnter={() => { if (draggedNodeId !== null && draggedNodeId !== item.node_id) setDropTargetNodeId(item.node_id); }} onPointerUp={() => { if (draggedNodeId !== null) void handleDrop(targetPosition); }} onPointerCancel={() => { setDraggedNodeId(null); setDropTargetNodeId(null); }}>
                     <div className="quick-item-content">
                       <button className="drag-handle" type="button" disabled={membershipBusy} aria-label={`Drag ${item.title}`} onPointerDown={(event) => { event.preventDefault(); setDraggedNodeId(item.node_id); setDropTargetNodeId(null); }}><span aria-hidden="true">⠿</span></button>
                       <WorkItemQuickControls nodeId={item.node_id} revision={item.work_revision} status={item.status} priority={item.priority} blocker={item.blocker} label={item.title} checkbox minimal onSaved={refreshAfterWorkItemSave} />
-                      <span className="quick-item-description">{item.title}</span>
+                      <span className="quick-item-copy">
+                        <span className="quick-item-description">{item.title}</span>
+                        <WorkspacePath path={item.workspace_path} />
+                      </span>
                       <button className="quick-item-delete" type="button" disabled={membershipBusy} onClick={() => void handleDeleteQuickItem(item)}>Delete</button>
                     </div>
                   </li>
@@ -459,6 +468,7 @@ export default function App() {
                       )}
                       <div className="today-row-copy">
                         <span className="today-path">{todayPath(item)}</span>
+                        <WorkspacePath path={item.workspace_path} />
                         {item.kind === "task" && item.summary && (
                           <span className="today-description">{item.summary}</span>
                         )}
@@ -547,6 +557,7 @@ export default function App() {
                                   <span className="child-task-title">
                                     {childItemPath(item, child)}
                                   </span>
+                                  <WorkspacePath path={child.workspace_path} />
                                   {child.summary && (
                                     <span className="today-description">{child.summary}</span>
                                   )}
@@ -566,7 +577,16 @@ export default function App() {
             </ol>
           )}
         </section>
-        {stepMenu && <><button className="menu-dismiss" type="button" aria-label="Close menu" onClick={() => setStepMenu(null)} /><div className="action-menu context-menu" role="menu" style={{ left: stepMenu.x, top: stepMenu.y }}><button type="button" role="menuitem" onClick={() => { setStepTarget({ id: stepMenu.id, title: stepMenu.title, revision: stepMenu.revision }); setStepMenu(null); }}>Add step</button></div></>}
+        {stepMenu && <>
+          <button className="menu-dismiss" type="button" aria-label="Close menu" onClick={() => setStepMenu(null)} />
+          <div className="action-menu context-menu" role="menu" style={{ left: stepMenu.x, top: stepMenu.y }}>
+            {today.status === "ready" && menuTodayItem && <>
+              <button type="button" role="menuitem" disabled={membershipBusy || menuTodayIndex === 0} onClick={() => { setStepMenu(null); void handleReorder(stepMenu.id, 0); }}>Move to top</button>
+              <button type="button" role="menuitem" disabled={membershipBusy || menuTodayIndex === today.items.length - 1} onClick={() => { setStepMenu(null); void handleReorder(stepMenu.id, today.items.length - 1); }}>Move to bottom</button>
+            </>}
+            {!menuTodayItem?.is_quick_item && <button type="button" role="menuitem" onClick={() => { setStepTarget({ id: stepMenu.id, title: stepMenu.title, revision: stepMenu.revision }); setStepMenu(null); }}>Add step</button>}
+          </div>
+        </>}
         {stepTarget && <AddStepModal target={stepTarget} onCancel={() => setStepTarget(null)} onSubmit={(summary, status) => void handleAddStep(summary, status)} />}
         {quickItemOpen && <div className="modal-backdrop" role="presentation"><form className="modal-card quick-item-modal" aria-label="New Quick item" onSubmit={(event) => void handleCreateQuickItem(event)}><h2>New Quick item</h2><label>Description<input name="description" autoFocus required /></label><div className="modal-actions"><button type="button" onClick={() => setQuickItemOpen(false)}>Cancel</button><button className="primary-action" type="submit">Add</button></div></form></div>}
           </>

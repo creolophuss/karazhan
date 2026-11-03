@@ -8,6 +8,10 @@
   const back = document.querySelector('#return');
   const forget = document.querySelector('#forget');
   const status = document.querySelector('#status');
+  const native = typeof chrome.runtime.sendNativeMessage === 'function';
+  document.querySelector('#extension-id').textContent = chrome.runtime.id;
+  document.querySelector('#install-command').textContent = `node native/install.mjs --extension-id ${chrome.runtime.id}`;
+  document.querySelector('#legacy-file-access').hidden = native;
   let handle = null, busy = false, currentUrl, remembered = false, storageWarning = '';
 
   function show(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
@@ -114,7 +118,7 @@
     if (busy) { event.preventDefault(); event.returnValue = ''; }
   });
 
-  if (session && Number.isInteger(tabId) && tabId > 0) {
+  if (!native && session && Number.isInteger(tabId) && tabId > 0) {
     snapshot().then(async current => {
       currentUrl = current.url;
       document.querySelector('#filename').textContent = decodeURIComponent(new URL(currentUrl).pathname);

@@ -13,6 +13,25 @@ Every Custodian writes its own Workspace files first and then synchronizes its o
 
 `task_agent` is the current wire identifier for Custodian writes. It is a compatibility value in the shared contract, not a third Agent role.
 
+## Delegate MCP operations
+
+These instructions distinguish the primary Agent from its delegated MCP executor. A temporary executor is not a new Custodian or an independent Work owner.
+
+For the primary Agent:
+
+1. Save the local result and decide that synchronization is due under the existing rules. Persist the intended operation and content, or their exact durable locator, in the existing log before delegation.
+2. Use the runtime's subagent capability. Supply the Workspace path, Work ID, authorized operation and exact content, evidence locator, role/actor provenance and the applicable Skill path. Explicitly identify the task as a delegated MCP executor and prohibit re-delegation. In Codex, use `collaboration.spawn_agent`; other runtimes use their available equivalent.
+3. Keep one active MCP executor per Work. Reuse it for later operations when possible and execute that Work's writes serially. Do not launch overlapping writes to the same object or send a second copy of an outstanding request.
+4. Continue independent work. Do not immediately wait for ordinary synchronization. Wait only when the next action requires the verified MCP result. Until verification arrives, report synchronization as pending, separately from completed local work.
+5. If no executor has the required tools and permissions, record the pending operation and continue unaffected work. Do not silently fall back to blocking primary-Agent MCP writes. Delegation does not grant new tools or permissions.
+
+For the delegated MCP executor:
+
+- Execute the existing operation workflow directly. Do not delegate it again. Include prerequisite queries, fresh revisions, durable request recording, writes, independent verification and failure handling in this one assignment.
+- Preserve the delegating role's ownership, allowed operations and actor/ref/channel. Do not infer field changes, acceptance or `done` from the local result.
+- Append only exact requests and necessary pending/failure/verification records to the original log. Do not edit business files, requirements or handoff indexes. The primary Agent owns those files and incorporates verified results when appropriate.
+- Return verified success, failure, conflict or verification pending, with the event/object ID and log locator. Follow the existing identical-replay and conflict rules; do not add retry loops. A session ending does not guarantee that an in-flight executor survives: retain pending intent for recovery.
+
 ## First registration
 
 A top-level Project Custodian starts from a provisioned Workspace whose `.workbench/task.yaml` already contains a stable `work.id` and `kind: project`. It uses that same ID in an idempotent `CreateProject` command, queries the result, and records the verified registration in its append-only log. Karazhan availability is not a prerequisite for local execution; a failed registration is retried later with the same identity.
@@ -39,6 +58,8 @@ ResourceBinding writes register locators only; they do not read, scan, upload, o
 Synchronize the first complete result that meets the current explicit delivery conditions, actual phase deliveries, major milestones, and blocker/condition changes that affect execution or need user attention. A draft, ordinary revision, wording change, or repeat display does not qualify as a new delivery. A reply ending does not end a phase. Merge ordinary steps into the next meaningful update; there is no timed-update obligation.
 
 Decide whether synchronization is due before entering the steps below. Reuse the durable local conclusion; do not reread the task records just to prepare a reply. Merge ordinary analysis, edits, small fixes, and test results into the local log at actual delivery or a deliberate stop that needs recovery. Preserve critical authorization, execution-affecting decisions, blockers, and pending external operations promptly; reference existing authoritative content and evidence without repeating it.
+
+The primary Agent delegates this sequence; the delegated MCP executor performs steps 1–5 directly.
 
 1. Reuse the durable local conclusion and known stable `work.id`. Query `get_project` or `get_task` for the current revision only for this actual synchronization. Do not substitute a cached revision.
 2. Before sending, retain enough information in the same `agent_log.md` to reconstruct the exact request: node, stable event ID/key, event kind, original expected revision, exact summary/details, step status, and actor/ref/channel. Reuse already recorded text; a compact metadata entry is sufficient. No separate command JSON is required.

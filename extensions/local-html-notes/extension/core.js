@@ -458,12 +458,13 @@ button[data-ln-ui="comment-badge"]:focus-visible { outline:2px solid #306c65!imp
     return Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
   }
 
-  async function writeFile(handle, snapshot) {
+  async function writeFile(handle, snapshot, serializedSource) {
     const file = await handle.getFile();
     if (file.name !== snapshot.name || await hash(await file.arrayBuffer()) !== snapshot.hash) {
       throw new Error('所选文件与当前文档不一致，或文件已被外部修改。未覆盖，请重新打开原文件。');
     }
-    const source = serialize(snapshot.source, snapshot.notes);
+    // The background worker has no DOM. The report page supplies serialized HTML.
+    const source = serializedSource === undefined ? serialize(snapshot.source, snapshot.notes) : serializedSource;
     let stream;
     try {
       stream = await handle.createWritable({ mode: 'exclusive' });

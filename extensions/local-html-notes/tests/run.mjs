@@ -13,6 +13,7 @@ const fixture = await readFile(path.join(root, 'tests/fixtures/测试 报告.htm
 const dynamicFixture = await readFile(path.join(root, 'tests/fixtures/脚本 报告.html'), 'utf8');
 const coreCode = await readFile(path.join(root, 'extension/core.js'), 'utf8');
 const editorCode = await readFile(path.join(root, 'extension/editor.js'), 'utf8');
+const backgroundCode = await readFile(path.join(root, 'extension/background.js'), 'utf8');
 const saveCode = await readFile(path.join(root, 'extension/save.js'), 'utf8');
 const handlesCode = await readFile(path.join(root, 'extension/handles.js'), 'utf8');
 const saveHtml = await readFile(path.join(root, 'extension/save.html'), 'utf8');
@@ -298,12 +299,20 @@ await test('选错名称、外部修改、权限拒绝及写入失败不覆盖�
 async function editorEnvironment(source = fixture, executeScripts = false, filename = '测试 报告.html') {
   const env = environment(source, pathToFileURL(path.join(output, filename)).href, executeScripts ? 'dangerously' : 'outside-only');
   const listeners = [], messages = [];
+  const intervals = [], shortcuts = [];
+  env.window.setInterval = (callback, delay) => { intervals.push({ callback, delay }); return intervals.length; };
+  const addListener = env.window.addEventListener.bind(env.window);
+  env.window.addEventListener = (type, callback, options) => {
+    if (type === 'keydown' && options === true) shortcuts.push(callback);
+    addListener(type, callback, options);
+  };
   env.window.chrome = {
     runtime: { id: 'test-extension',
       onMessage: { addListener(listener) { listeners.push(listener); } },
       async sendMessage(message) {
         messages.push(message);
         if (message.type === 'ln-read-source') return { ok: true, source, hash: digest(source), name: filename };
+        if (message.type === 'ln-save') return { ok: true, needsAuthorization: true };
         if (message.type === 'ln-open-save') return { ok: true, tabId: 99 };
       }
     }
@@ -312,7 +321,10 @@ async function editorEnvironment(source = fixture, executeScripts = false, filen
   for (let i = 0; i < 100 && !env.document.querySelector('[data-ln-ui="editor"]')?.shadowRoot.querySelector('#save:not(:disabled)'); i++) await turn();
   const shadow = env.document.querySelector('[data-ln-ui="editor"]').shadowRoot;
   assert.equal(shadow.querySelector('#save').disabled, false, shadow.querySelector('.state').textContent);
-  return { ...env, shadow, messages, listeners };
+  // jsdom cannot produce trusted input. Invoke only this handler with a mock user click.
+  const saveButton = shadow.querySelector('#save');
+  saveButton.click = () => { if (!saveButton.disabled) void saveButton.onclick({ isTrusted: true }); };
+  return { ...env, shadow, messages, listeners, intervals, shortcuts };
 }
 
 function selectText(env, exact) {
@@ -595,7 +607,7 @@ await test('复用授权快速保存完成后，不把成功状态覆盖成待�
   selectText(env, '收入增长'); env.shadow.querySelector('[data-color="blue"]').click();
   const snapshot = await editorSnapshot(env);
   env.window.chrome.runtime.sendMessage = async message => {
-    assert.equal(message.type, 'ln-open-save');
+    assert.equal(message.type, 'ln-save');
     const dispatch = payload => new Promise(resolve => env.listeners[0]({ ...payload, session: message.session }, { id: 'test-extension' }, resolve));
     await dispatch({ type: 'ln-saving' });
     const source = env.core.serialize(snapshot.source, snapshot.notes);
@@ -896,7 +908,7 @@ await test('未生成、无法唯一定位的批注保留；正文稍后出现�
 await test('扩展后台：只读取顶层本地 HTML，拒绝 PDF 与非页面请求', async () => {
   let listener, lastFetch;
   const context = {
-    URL, TextDecoder, crypto: webcrypto,
+    URL, TextDecoder, crypto: webcrypto, importScripts() {},
     fetch: async url => {
       lastFetch = url;
       const bytes = new TextEncoder().encode(fixture);
@@ -919,7 +931,258 @@ await test('扩展后台：只读取顶层本地 HTML，拒绝 PDF 与非页面�
   }
 });
 
-const codeFiles = ['extension/manifest.json', 'extension/core.js', 'extension/editor.js', 'extension/background.js', 'extension/save.html', 'extension/save.css', 'extension/save.js', 'extension/handles.js', 'tests/run.mjs', 'tests/fixtures/测试 报告.html', 'tests/fixtures/脚本 报告.html', 'package.json', 'package-lock.json', 'README.md'];
+// This worker has no DOMParser. HTML serialization must stay in the report page.
+function backgroundEnvironment(database, sendMessage, nativeMessage) {
+  let listener;
+  const opened = [], activated = [], sent = [];
+  const context = vm.createContext({
+    URL, TextEncoder, TextDecoder, crypto: webcrypto, indexedDB: database,
+    chrome: {
+      runtime: { id: 'test-extension', onMessage: { addListener(value) { listener = value; } }, getURL: name => 'chrome-extension://test-extension/' + name },
+      action: { onClicked: { addListener() {} } },
+      tabs: {
+        async sendMessage(id, message, options) { sent.push({ id, message, options }); return sendMessage(message); },
+        async create(options) { opened.push(options); return { id: 99 }; },
+        async update(id, options) { activated.push({ id, ...options }); },
+        async get() { return null; }
+      }
+    }
+  });
+  if (nativeMessage) context.chrome.runtime.sendNativeMessage = nativeMessage;
+  context.importScripts = (...names) => {
+    for (const name of names) vm.runInContext(name === 'core.js' ? coreCode : handlesCode, context);
+  };
+  vm.runInContext(backgroundCode, context);
+  return { opened, activated, sent,
+    invoke(message, url, frameId = 0) {
+      return new Promise(resolve => {
+        if (listener(message, { id: 'test-extension', frameId, tab: { id: 12, url } }, resolve) !== true) resolve(undefined);
+      });
+    }
+  };
+}
+
+function connectWorker(env, database, nativeMessage) {
+  const worker = backgroundEnvironment(database, message => new Promise(resolve => env.listeners[0](message, { id: 'test-extension' }, resolve)), nativeMessage);
+  env.window.chrome.runtime.sendMessage = message => {
+    env.messages.push(message);
+    return worker.invoke(message, env.window.location.href);
+  };
+  return worker;
+}
+
+await test('点击保存直接覆盖原文件，不切换页面；刷新和后台重启后复用授权', async () => {
+  const filename = path.join(output, 'direct-save.html');
+  await writeFile(filename, fixture);
+  const handle = fileHandle(filename), database = handleDatabase();
+  database.records.set(pathToFileURL(filename).href, handle);
+  let source = fixture;
+  for (const [index, quote] of ['收入增长', '研发投入保持稳定'].entries()) {
+    const env = await editorEnvironment(source, false, path.basename(filename));
+    const worker = connectWorker(env, database);
+    selectText(env, quote); env.shadow.querySelector('[data-color="blue"]').click();
+    env.shadow.querySelector('#save').click(); env.shadow.querySelector('#save').click();
+    await waitFor(() => /^已保存/.test(env.shadow.querySelector('.state').textContent), '应在报告页直接保存成功');
+    source = await readFile(filename, 'utf8');
+    const reopened = environment(source);
+    assert.equal(reopened.core.readNotes(reopened.document).length, index + 1);
+    assert.equal(handle.stats.committed, index + 1);
+    assert.equal(worker.opened.length, 0); assert.equal(worker.activated.length, 0);
+    assert.ok(worker.sent.every(item => item.options.frameId === 0));
+    assert.equal(env.messages.filter(message => message.type === 'ln-open-save').length, 0);
+  }
+});
+
+await test('无授权、权限失效或存储不可用时才打开保存页；后台不请求权限', async () => {
+  for (const mode of ['missing', 'prompt', 'storage', 'revoked', 'moved']) {
+    const filename = path.join(output, `direct-${mode}.html`);
+    await writeFile(filename, fixture);
+    const database = handleDatabase(), handle = fileHandle(filename);
+    let requests = 0;
+    handle.queryPermission = async () => mode === 'prompt' ? 'prompt' : 'granted';
+    handle.requestPermission = async () => { requests++; throw new Error('后台不得请求授权'); };
+    if (mode === 'revoked') handle.createWritable = async () => { throw new DOMException('Permission revoked', 'NotAllowedError'); };
+    if (mode === 'moved') handle.getFile = async () => { throw new DOMException('File moved', 'NotFoundError'); };
+    if (['prompt', 'revoked', 'moved'].includes(mode)) database.records.set(pathToFileURL(filename).href, handle);
+    if (mode === 'storage') database.failOpen = true;
+    const env = await editorEnvironment(fixture, false, path.basename(filename));
+    const worker = connectWorker(env, database);
+    env.shadow.querySelector('#save').click();
+    await waitFor(() => worker.opened.length === 1 && !env.shadow.querySelector('#save').disabled, `${mode} 应回退保存页`);
+    assert.equal(requests, 0); assert.equal(handle.stats.opened, 0);
+    assert.equal(await readFile(filename, 'utf8'), fixture);
+  }
+});
+
+await test('直接保存遇到外部修改或磁盘失败时保留未保存批注，不转去保存页重试', async () => {
+  for (const mode of ['changed', 'disk']) {
+    const filename = path.join(output, `direct-error-${mode}.html`);
+    const original = mode === 'changed' ? fixture + '\n外部修改' : fixture;
+    await writeFile(filename, original);
+    const database = handleDatabase(), handle = fileHandle(filename, { failWrite: mode === 'disk' });
+    database.records.set(pathToFileURL(filename).href, handle);
+    const env = await editorEnvironment(fixture, false, path.basename(filename));
+    const worker = connectWorker(env, database);
+    selectText(env, '收入增长'); env.shadow.querySelector('[data-color="green"]').click();
+    env.shadow.querySelector('#save').click();
+    await waitFor(() => /外部修改|模拟磁盘/.test(env.shadow.querySelector('.state').textContent), '失败原因应可见');
+    assert.equal(env.shadow.querySelector('#save').disabled, false);
+    assert.equal(env.document.querySelectorAll(env.core.MARKS).length, 1);
+    assert.equal(handle.stats.committed, 0); assert.equal(worker.opened.length, 0);
+    assert.equal(await readFile(filename, 'utf8'), original);
+  }
+});
+
+await test('直接保存拒绝非顶层 HTML 和已导航到另一文档的快照', async () => {
+  const filename = path.join(output, 'direct-address.html');
+  await writeFile(filename, fixture);
+  const database = handleDatabase(), handle = fileHandle(filename), url = pathToFileURL(filename).href;
+  database.records.set(url, handle);
+  const worker = backgroundEnvironment(database, async () => ({ ok: true, snapshot: { url: 'file:///other.html' } }));
+  for (const [target, frameId] of [[url, 1], ['https://example.com/report.html', 0], ['file:///report.pdf', 0], [url, 0]]) {
+    const reply = await worker.invoke({ type: 'ln-save', session: 'test-session' }, target, frameId);
+    assert.equal(reply?.ok, false);
+  }
+  assert.equal(handle.stats.opened, 0);
+});
+
+await test('同一文件的并发保存被拒绝；报告页丢失确认后明确提示已写入', async () => {
+  const filename = path.join(output, 'direct-concurrent.html');
+  await writeFile(filename, fixture);
+  const database = handleDatabase(), handle = fileHandle(filename), url = pathToFileURL(filename).href;
+  database.records.set(url, handle);
+  const env = environment();
+  const snapshot = { url, name: handle.name, hash: digest(fixture), notes: [diskNote], revision: 1, serializedSource: env.core.serialize(fixture, [diskNote]) };
+  let release, blocked = false;
+  const createWritable = handle.createWritable.bind(handle);
+  handle.createWritable = async () => {
+    blocked = true;
+    await new Promise(resolve => { release = resolve; });
+    return createWritable();
+  };
+  const worker = backgroundEnvironment(database, async message => {
+    if (message.type === 'ln-snapshot') return { ok: true, snapshot };
+    if (message.type === 'ln-saved') throw new Error('模拟报告页关闭');
+    return { ok: true };
+  });
+  const pending = worker.invoke({ type: 'ln-save', session: 'first' }, url);
+  await waitFor(() => blocked, '首次保存已开始');
+  const duplicate = await worker.invoke({ type: 'ln-save', session: 'second' }, url);
+  assert.equal(duplicate.ok, false); assert.match(duplicate.error, /正在保存/);
+  release();
+  const result = await pending;
+  assert.equal(result.ok, false); assert.match(result.error, /文件已写入.*勿直接重试/);
+  assert.equal(handle.stats.committed, 1);
+  assert.equal(await readFile(filename, 'utf8'), snapshot.serializedSource);
+  assert.equal(worker.opened.length, 0);
+  const retry = await worker.invoke({ type: 'ln-save', session: 'retry' }, url);
+  assert.match(retry.error, /外部修改/);
+  assert.equal(handle.stats.committed, 1);
+});
+
+await test('首次保存使用本机助手，不选择文件、不读授权存储；目标由发送页决定', async () => {
+  const env = await editorEnvironment();
+  const database = handleDatabase(); database.failOpen = true;
+  const nativeRequests = [];
+  const worker = connectWorker(env, database, async (host, request) => {
+    nativeRequests.push({ host, request });
+    return { ok: true, hash: digest(request.source) };
+  });
+  selectText(env, '收入增长'); env.shadow.querySelector('[data-color="green"]').click();
+  env.shadow.querySelector('#save').click();
+  await waitFor(() => /^已保存/.test(env.shadow.querySelector('.state').textContent), '首次点击应通过助手直接保存');
+  assert.equal(nativeRequests.length, 1);
+  assert.equal(nativeRequests[0].host, 'com.karazhan.local_html_notes');
+  assert.equal(nativeRequests[0].request.url, env.window.location.href);
+  assert.equal(nativeRequests[0].request.expectedHash, digest(fixture));
+  const serialized = environment(nativeRequests[0].request.source);
+  assert.equal(serialized.core.readNotes(serialized.document).length, 1);
+  assert.equal(database.operations.length, 0);
+  assert.equal(worker.opened.length, 0); assert.equal(worker.activated.length, 0);
+  await env.shadow.querySelector('#save').onclick({ isTrusted: false });
+  assert.equal(nativeRequests.length, 1, 'report scripts cannot trigger file writes with synthetic clicks');
+});
+
+await test('本机助手缺失、冲突或摘要错误时提示原因，不退回选择文件或下载', async () => {
+  for (const mode of ['missing', 'conflict', 'hash']) {
+    const env = await editorEnvironment();
+    const worker = connectWorker(env, handleDatabase(), async () => {
+      if (mode === 'missing') throw new Error('Native host not found');
+      if (mode === 'conflict') return { ok: false, error: '文件已被外部修改。' };
+      return { ok: true, hash: 'wrong' };
+    });
+    selectText(env, '收入增长'); env.shadow.querySelector('[data-color="blue"]').click();
+    env.shadow.querySelector('#save').click();
+    await waitFor(() => /本机保存助手|外部修改|摘要不一致/.test(env.shadow.querySelector('.state').textContent), '错误必须可见');
+    assert.equal(env.shadow.querySelector('#save').disabled, false);
+    assert.equal(env.document.querySelectorAll(env.core.MARKS).length, 1);
+    assert.equal(worker.opened.length, 0);
+  }
+});
+
+await test('Ctrl+S 和 Cmd+S 使用已有保存流程并阻止浏览器另存为，拒绝合成按键', async () => {
+  const env = await editorEnvironment();
+  let writes = 0;
+  connectWorker(env, handleDatabase(), async (host, request) => { writes++; return { ok: true, hash: digest(request.source) }; });
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    let prevented = false, stopped = false;
+    env.shortcuts[0]({ isTrusted: true, key: 's', [modifier]: true, preventDefault() { prevented = true; }, stopImmediatePropagation() { stopped = true; } });
+    await waitFor(() => !env.shadow.querySelector('#save').disabled, '快捷键保存结束');
+    assert.equal(prevented, true); assert.equal(stopped, true);
+  }
+  assert.equal(writes, 2);
+  env.shortcuts[0]({ isTrusted: false, ctrlKey: true, key: 's' });
+  env.shortcuts[0]({ isTrusted: true, ctrlKey: true, shiftKey: true, key: 's' });
+  env.shortcuts[0]({ isTrusted: true, ctrlKey: true, key: 's', repeat: true, preventDefault() {}, stopImmediatePropagation() {} });
+  assert.equal(writes, 2);
+});
+
+await test('30 秒定时保存只写未保存批注，保存中跳过，保留保存期间的新修改', async () => {
+  const env = await editorEnvironment();
+  let writes = 0, release;
+  connectWorker(env, handleDatabase(), async (host, request) => {
+    writes++;
+    if (writes === 1) await new Promise(resolve => { release = resolve; });
+    return { ok: true, hash: digest(request.source) };
+  });
+  assert.equal(env.intervals.length, 1); assert.equal(env.intervals[0].delay, 30_000);
+  const tick = env.intervals[0].callback;
+  tick(); await turn(); assert.equal(writes, 0);
+  selectText(env, '收入增长'); env.shadow.querySelector('[data-color="blue"]').click();
+  tick(); await waitFor(() => writes === 1, '首次定时保存开始');
+  selectText(env, '研发投入保持稳定'); env.shadow.querySelector('[data-color="pink"]').click();
+  tick(); await turn(); assert.equal(writes, 1);
+  release(); await waitFor(() => !env.shadow.querySelector('#save').disabled, '首次保存完成');
+  assert.match(env.shadow.querySelector('.state').textContent, /未保存/);
+  tick(); await waitFor(() => writes === 2 && !env.shadow.querySelector('#save').disabled, '下次定时保存新修改');
+  assert.match(env.shadow.querySelector('.state').textContent, /已保存/);
+  tick(); await turn(); assert.equal(writes, 2);
+});
+
+await test('自动保存失败后暂停；手动成功可恢复；旧授权流程不自动弹出', async () => {
+  const env = await editorEnvironment();
+  let writes = 0, fail = true;
+  connectWorker(env, handleDatabase(), async (host, request) => {
+    writes++;
+    return fail ? { ok: false, error: '文件已被外部修改。' } : { ok: true, hash: digest(request.source) };
+  });
+  selectText(env, '收入增长'); env.shadow.querySelector('[data-color="green"]').click();
+  const tick = env.intervals[0].callback;
+  tick(); await waitFor(() => /外部修改/.test(env.shadow.querySelector('.state').textContent), '失败原因可见');
+  tick(); await turn(); assert.equal(writes, 1);
+  fail = false; env.shadow.querySelector('#save').click();
+  await waitFor(() => /^已保存/.test(env.shadow.querySelector('.state').textContent), '手动保存恢复');
+  selectText(env, '研发投入保持稳定'); env.shadow.querySelector('[data-color="pink"]').click();
+  tick(); await waitFor(() => writes === 3 && !env.shadow.querySelector('#save').disabled, '定时器恢复');
+  const legacy = await editorEnvironment();
+  const worker = connectWorker(legacy, handleDatabase());
+  selectText(legacy, '收入增长'); legacy.shadow.querySelector('[data-color="blue"]').click();
+  legacy.intervals[0].callback();
+  await waitFor(() => /自动保存已暂停/.test(legacy.shadow.querySelector('.state').textContent), '自动保存提示手动授权');
+  assert.equal(worker.opened.length, 0);
+});
+
+const codeFiles = ['extension/manifest.json', 'extension/core.js', 'extension/editor.js', 'extension/background.js', 'extension/save.html', 'extension/save.css', 'extension/save.js', 'extension/handles.js', 'native/host.mjs', 'native/install.mjs', 'tests/native.test.mjs', 'tests/run.mjs', 'tests/fixtures/测试 报告.html', 'tests/fixtures/脚本 报告.html', 'package.json', 'package-lock.json', 'README.md'];
 const sourceHashes = {};
 for (const name of codeFiles) sourceHashes[name] = digest(await readFile(path.join(root, name)));
 const report = {

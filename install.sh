@@ -80,6 +80,7 @@ require_command diff
 require_command git
 require_command shasum
 require_command awk
+require_command node
 
 SOURCE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null) || \
   die "repository HEAD is unavailable: $SCRIPT_DIR"
@@ -292,20 +293,11 @@ install_versioned_path() {
   printf '%s|adopted|%s|backup %s; version %s\n' "$label" "$target_path" "$backup_path" "$INSTALL_VERSION" >> "$STATUS_FILE"
 }
 
-tree_digest() {
-  root=$1
-  (
-    cd "$root"
-    find . -type f -print | LC_ALL=C sort | while IFS= read -r file; do
-      shasum -a 256 "$file"
-    done
-  ) | shasum -a 256 | awk '{ print $1 }'
-}
 
 path_digest() {
   pathname=$1
   if [ -d "$pathname" ]; then
-    tree_digest "$pathname"
+    node -e 'import(process.argv[1]).then(m => console.log(m.digest(process.argv[2])))' "file://$SCRIPT_DIR/scripts/scaffold-package.mjs" "$pathname"
   elif [ -f "$pathname" ]; then
     shasum -a 256 "$pathname" | awk '{ print $1 }'
   else
@@ -414,8 +406,10 @@ fi
 [ -f "$MCP_SOURCE" ] || die "Karazhan MCP binary not found: $MCP_SOURCE"
 [ -x "$MCP_SOURCE" ] || die "Karazhan MCP binary is not executable: $MCP_SOURCE"
 
+PROFILE_CREATED=0
 [ ! -L "$PROFILE_DIR" ] || die "Medivh profile path must not be a symlink: $PROFILE_DIR"
 if [ ! -d "$PROFILE_DIR" ]; then
+  PROFILE_CREATED=1
   "$HERMES_COMMAND" profile create "$PROFILE_NAME" --no-skills \
     --description "Prepare and register top-level Project Workspaces"
   [ -d "$PROFILE_DIR" ] || die "Hermes did not create the expected profile: $PROFILE_DIR"
@@ -462,31 +456,14 @@ else
 fi
 
 PACKAGE_SOURCE="$INSTALL_TMP/custodian-startup-kit"
-mkdir -p "$PACKAGE_SOURCE/.agents/skills"
-cp -R "$SCRIPT_DIR/blueprints/skills/workspace-provisioning" \
-  "$PACKAGE_SOURCE/.agents/skills/workspace-provisioning"
-cp -R "$SCRIPT_DIR/blueprints/skills/karazhan-mcp-collaboration" \
-  "$PACKAGE_SOURCE/.agents/skills/karazhan-mcp-collaboration"
-cp -R "$SCRIPT_DIR/blueprints/skills/answer-me-with-html" \
-  "$PACKAGE_SOURCE/.agents/skills/answer-me-with-html"
-
-SKILLS_DIGEST=$(tree_digest "$PACKAGE_SOURCE/.agents/skills")
-if git -C "$SCRIPT_DIR" diff --quiet -- blueprints/skills && \
-   git -C "$SCRIPT_DIR" diff --cached --quiet -- blueprints/skills; then
+if git -C "$SCRIPT_DIR" diff --quiet -- blueprints && \
+   git -C "$SCRIPT_DIR" diff --cached --quiet -- blueprints; then
   SOURCE_STATE=clean
 else
   SOURCE_STATE=modified
 fi
-cat > "$PACKAGE_SOURCE/.agents/skills/PACKAGE.md" <<EOF
-# Custodian startup kit
-
-- Install version: $INSTALL_VERSION
-- Source repository: $SCRIPT_DIR
-- Source commit: $SOURCE_COMMIT
-- Source state: $SOURCE_STATE
-- Skills digest (SHA-256): $SKILLS_DIGEST
-- Installed Skills: workspace-provisioning, karazhan-mcp-collaboration, answer-me-with-html
-EOF
+node "$SCRIPT_DIR/scripts/scaffold-package.mjs" package "$SCRIPT_DIR" \
+  "$PACKAGE_SOURCE/.agents/skills" "$INSTALL_VERSION" "$SOURCE_COMMIT" "$SOURCE_STATE"
 
 PROFILE_LITERAL=$(shell_quote "$PROFILE_DIR")
 HERMES_LITERAL=$(shell_quote "$HERMES_COMMAND")
@@ -554,7 +531,6 @@ PROFILE_SOUL_SOURCE="$SCRIPT_DIR/blueprints/medivh/SOUL.md"
 PROFILE_AGENTS_SOURCE="$SCRIPT_DIR/blueprints/medivh/AGENTS.md"
 PROFILE_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/workspace-provisioning"
 PROFILE_MCP_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/medivh-karazhan-registration"
-PROFILE_HTML_SKILL_SOURCE="$SCRIPT_DIR/blueprints/skills/answer-me-with-html"
 PROFILE_PACKAGE_TARGET="$PROFILE_DIR/packages/custodian-startup-kit"
 
 if [ "$SKIP_APP" != 1 ]; then
@@ -562,12 +538,20 @@ if [ "$SKIP_APP" != 1 ]; then
 fi
 preflight_managed_path "$MCP_SOURCE" "$BIN_DIR/karazhan-mcp" "$BASELINE_ROOT/bin/karazhan-mcp"
 preflight_managed_path "$LAUNCHER_SOURCE" "$LAUNCHER_TARGET" "$BASELINE_ROOT/bin/medivh"
-preflight_managed_path "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
-preflight_managed_path "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
-preflight_managed_path "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
-preflight_managed_path "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
-preflight_managed_path "$PROFILE_HTML_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/answer-me-with-html" "$BASELINE_ROOT/medivh/skills/answer-me-with-html"
-preflight_managed_path "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
+# Existing profiles can contain generated/local business instructions. Upgrade the
+# scaffold group only through the reviewed updater, independent of App/MCP builds.
+SCAFFOLD_FRESH=1
+for scaffold_path in "$PROFILE_DIR/AGENTS.md" "$PROFILE_DIR/SOUL.md" \
+  "$PROFILE_DIR/skills/karazhan" "$PROFILE_PACKAGE_TARGET"; do
+  if [ "$PROFILE_CREATED" = 0 ] && [ -e "$scaffold_path" ]; then SCAFFOLD_FRESH=0; fi
+done
+if [ "$SCAFFOLD_FRESH" = 1 ]; then
+  preflight_managed_path "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
+  preflight_managed_path "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
+  preflight_managed_path "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
+  preflight_managed_path "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
+  preflight_managed_path "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
+fi
 
 if [ "$SKIP_APP" != 1 ]; then
   install_versioned_path "Karazhan app" "$APP_SOURCE" "$APP_DIR/Karazhan.app" "$BASELINE_ROOT/app/Karazhan.app"
@@ -579,12 +563,19 @@ else
 fi
 install_versioned_path "Karazhan MCP" "$MCP_SOURCE" "$BIN_DIR/karazhan-mcp" "$BASELINE_ROOT/bin/karazhan-mcp"
 install_versioned_path "Medivh launcher" "$LAUNCHER_SOURCE" "$LAUNCHER_TARGET" "$BASELINE_ROOT/bin/medivh"
-install_versioned_path "Medivh SOUL" "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
-install_versioned_path "Medivh AGENTS" "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
-install_versioned_path "Medivh provisioning Skill" "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
-install_versioned_path "Medivh MCP Skill" "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
-install_versioned_path "Medivh HTML Skill" "$PROFILE_HTML_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/answer-me-with-html" "$BASELINE_ROOT/medivh/skills/answer-me-with-html"
-install_versioned_path "Custodian startup kit" "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
+if [ "$SCAFFOLD_FRESH" = 1 ]; then
+  install_versioned_path "Medivh SOUL" "$PROFILE_SOUL_SOURCE" "$PROFILE_DIR/SOUL.md" "$BASELINE_ROOT/medivh/SOUL.md"
+  install_versioned_path "Medivh AGENTS" "$PROFILE_AGENTS_SOURCE" "$PROFILE_DIR/AGENTS.md" "$BASELINE_ROOT/medivh/AGENTS.md"
+  install_versioned_path "Medivh provisioning Skill" "$PROFILE_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/workspace-provisioning" "$BASELINE_ROOT/medivh/skills/workspace-provisioning"
+  install_versioned_path "Medivh MCP Skill" "$PROFILE_MCP_SKILL_SOURCE" "$PROFILE_DIR/skills/karazhan/medivh-karazhan-registration" "$BASELINE_ROOT/medivh/skills/medivh-karazhan-registration"
+  install_versioned_path "Custodian startup kit" "$PACKAGE_SOURCE" "$PROFILE_PACKAGE_TARGET" "$BASELINE_ROOT/medivh/packages/custodian-startup-kit"
+else
+  printf '%s|pending|%s|preserved; use node scripts/update-scaffolds.mjs prepare
+' "Agent scaffolds" "$PROFILE_DIR" >> "$STATUS_FILE"
+fi
+# Retain the installed custom Profile path for read-only updater discovery.
+mkdir -p "$STATE_DIR"
+printf '%s\n' "$PROFILE_DIR" > "$STATE_DIR/medivh-profile-path"
 
 if [ "$MCP_COMMAND_CONFIG_MISSING" -eq 1 ]; then
   "$HERMES_COMMAND" -p "$PROFILE_NAME" config set --force \

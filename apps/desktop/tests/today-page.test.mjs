@@ -88,6 +88,7 @@ test("expanded rows present recursive Project and Task children supplied by shar
         blocker: "Waiting for review",
         revision: 2,
         has_steps: true,
+        workspace_path: "/workspace/direct-task",
       },
     ],
   };
@@ -104,6 +105,7 @@ test("expanded rows present recursive Project and Task children supplied by shar
       priority: "high",
       blocker: "Waiting for review",
       has_steps: true,
+      workspace_path: "/workspace/direct-task",
     },
   ]);
   assert.equal(childItemPath(parent, parent.child_items[0]), "Karazhan › Visible direct task");

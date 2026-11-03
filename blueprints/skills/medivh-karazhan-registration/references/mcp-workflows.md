@@ -1,5 +1,7 @@
 # Medivh Project registration and Backlog capture
 
+The primary Agent delegates MCP registration and synchronization as described in the Skill's **Delegate MCP operations** section. The delegated executor performs the sequences below directly, including their queries and verification. The primary Agent retains business-file and handoff-index ownership.
+
 The stdio server exposes `karazhan_query` and `karazhan_command`; each tool takes `{ "request": ... }`. The Hermes host supplies the product database path.
 
 ## Prepare durable identities
@@ -96,7 +98,7 @@ If the pending binding is absent and no conflicting primary Workspace binding ex
 }
 ```
 
-Query bindings again and verify the binding ID, node, kind, exact locator, primary flag, availability, source, and revision. Append the verified result to `agent_log.md`; update only the latest-handoff locator in `context/index.md`.
+Query bindings again and verify the binding ID, node, kind, exact locator, primary flag, availability, source, and revision. Append the verified result to `agent_log.md`; the primary Medivh updates the latest-handoff locator in `context/index.md` when a handoff is due.
 
 ## Capture a user-requested Backlog item
 

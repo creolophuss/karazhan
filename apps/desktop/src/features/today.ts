@@ -225,6 +225,7 @@ export interface TodayChildRow {
   priority: ProjectTaskItem["priority"];
   blocker: string | null;
   has_steps: boolean;
+  workspace_path: string | null;
 }
 
 export function childItemRows(item: TodayItem): TodayChildRow[] {
@@ -239,6 +240,7 @@ export function childItemRows(item: TodayItem): TodayChildRow[] {
     priority: child.priority,
     blocker: child.blocker,
     has_steps: child.has_steps,
+    workspace_path: child.workspace_path,
   }));
 }
 

@@ -13,8 +13,16 @@
   <main>
     <div class="eyebrow">LOCAL HTML NOTES · EDGE</div>
     <h1>批注留在文件里。</h1>
-    <p class="lead">高亮、评论和查看脚本一起写入原 HTML。扩展只记住文件授权，无备份，无服务。</p>
-    <section aria-labelledby="file-heading">
+    <p class="lead">高亮、评论和查看脚本一起写入原 HTML。本机助手保存后退出，无模型，无常驻服务。</p>
+    <section aria-labelledby="native-heading">
+      <h2 id="native-heading">一次安装，首次保存也不用选文件</h2>
+      <p>macOS Edge 需要 Node.js 24 或更高版本。在 repo 的 <code>extensions/local-html-notes/</code> 目录执行：</p>
+      <pre><code id="install-command">node native/install.mjs --extension-id &lt;扩展 ID&gt;</code></pre>
+      <p>当前扩展 ID：<code id="extension-id"></code></p>
+      <p>安装后，在 <code>edge://extensions</code> 重新加载扩展，再刷新报告页。点击「保存」即可直接覆盖当前 HTML，不需要选择原文件。</p>
+      <p class="small">助手只接受本扩展的保存请求。原文件被外部修改或系统拒绝写入时会停止保存，不下载副本。扩展目录或 Node.js 路径变化后，重新安装助手。</p>
+    </section>
+    <section id="legacy-file-access" aria-labelledby="file-heading">
       <h2 id="file-heading">保存到原文件</h2>
       <p id="filename">打开本地 HTML 后，点击页面右上角的「保存」。</p>
       <p id="status" role="status">首次保存需要选择原 HTML，并允许写入。</p>
@@ -25,7 +33,7 @@
         <button id="forget" class="secondary" hidden>忘记此文件</button>
       </div>
       <p id="storage-status" class="small" role="status"></p>
-      <p class="small">首次选择原文件后会记住授权。以后点击报告页的「保存」即可写回并返回报告，关闭本页后也可复用。权限失效时只需点击确认授权。请选原文件；同名副本不能通过浏览器路径自动区分。</p>
+      <p class="small">首次选择原文件后会记住授权。以后点击报告页的「保存」会直接写回，不切换到本页；关闭本页后也可复用。权限失效时只需点击确认授权。请选原文件；同名副本不能通过浏览器路径自动区分。</p>
     </section>
     <section>
       <h2>使用方法</h2>
@@ -34,12 +42,13 @@
         <li>进入扩展详情，开启「允许访问文件 URL」，再刷新本地 HTML。</li>
         <li>选中文字，点击颜色高亮；双击高亮打开评论对话，输入后点击「添加回复」。</li>
         <li>点击高亮可以改色、删除。点击评论角标查看历史，可编辑、删除自己的消息。</li>
-        <li>首次点击「保存」，在本页选择原文件并授权；成功后自动返回报告。后续保存复用授权，通常不用重新选文件。</li>
+        <li>按上面的命令安装本机助手。点击「保存」直接覆盖原文件，首次也不选择文件，不切换页面。</li>
+        <li>按 Ctrl+S 或 macOS 的 Cmd+S 保存。每 30 秒自动保存已添加且有改动的批注；失败后暂停，手动成功保存或刷新后恢复。</li>
         <li>将已保存的 HTML 交给 LLM，按项目使用说明中的提示词写回回复。完成后刷新报告页，可继续回复并保存。LLM 消息在界面中只读。</li>
       </ol>
       <p class="small">支持 UTF-8 HTML 和脚本生成的正文。保存后，原报告脚本继续运行，批注在正文生成或更新后恢复；其他浏览器不安装扩展也能查看。PDF 和跨报告批注迁移不在本期范围。</p>
     </section>
-    <footer>文件选择或写入失败时，不会清除页面中的未保存批注。请保留报告页并重试。</footer>
+    <footer>写入失败时，不会清除页面中的未保存批注。请保留报告页，并按提示处理。</footer>
   </main>
 </body>
 </html>

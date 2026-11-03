@@ -45,9 +45,13 @@ The installer builds the current checkout and installs:
 
 Add `~/.local/bin` to your shell's `PATH` if needed. Configure your model in Hermes before running `medivh`. The installer does not configure model credentials. The source-built App is unsigned and unnotarized.
 
-Installation requires a clean checkout and full Git history. Versions use `<Tauri major>.<minor>.<commit count>`. Updates reject downgrades and changed managed files. Existing unversioned targets are backed up before replacement. User memories, sessions, and other Skills stay user-owned; the reference `memories/USER.md` is never installed over your memory.
+Installation requires a clean checkout and full Git history. Versions use `<Tauri major>.<minor>.<commit count>`. Updates reject downgrades and changed managed files. Existing unversioned targets are backed up before replacement. Existing Agent scaffolds are preserved and reported as pending for the separate update workflow. User memories, sessions, and other Skills stay user-owned; the reference `memories/USER.md` is never installed over your memory.
 
 To update, fetch and review source changes, then rerun `./install.sh`. The installer does not run `git pull`. Use `KARAZHAN_INSTALL_SKIP_APP=1 ./install.sh` to install only MCP and Medivh components. Network commands inherit your proxy environment. Set `KARAZHAN_INSTALL_PROXY` only for an installer-specific proxy override.
+
+## Update Agent scaffolds
+
+Use `node scripts/update-scaffolds.mjs prepare --out <private-directory>` to discover existing Medivh and Custodian targets and prepare a private preview. Optional `--workspace` and `--medivh-profile` flags select only named targets. Check any targets to skip in `TARGETS.md`, then ask the executing Agent to compose and review the remaining instruction candidates. Then run `node scripts/update-scaffolds.mjs apply --plan <private-directory>`. This updates scaffolds without an App/Rust build or Agent restart. See the [update workflow](docs/scaffold-updates.md) for discovery, review, conflicts, and backups.
 
 ## Use
 

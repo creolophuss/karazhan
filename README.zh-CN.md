@@ -45,9 +45,13 @@ cd karazhan
 
 如有需要，将 `~/.local/bin` 加入 shell 的 `PATH`。运行 `medivh` 前，请先在 Hermes 中配置模型。安装器不配置模型凭证。源码构建的 App 未签名，也未经过公证。
 
-安装要求 checkout 干净且 Git 历史完整。版本格式为 `<Tauri major>.<minor>.<commit count>`。更新会拒绝降级或覆盖已被本地修改的托管文件。替换无版本的既有目标前会先备份。用户记忆、会话和其他 Skill 始终归用户所有；参考文件 `memories/USER.md` 不会覆盖用户记忆。
+安装要求 checkout 干净且 Git 历史完整。版本格式为 `<Tauri major>.<minor>.<commit count>`。更新会拒绝降级或覆盖已被本地修改的托管文件。替换无版本的既有目标前会先备份。安装器保留已有 Agent 脚手架，并提示使用独立更新流程。用户记忆、会话和其他 Skill 始终归用户所有；参考文件 `memories/USER.md` 不会覆盖用户记忆。
 
 更新时，先获取并审阅源码变化，再运行 `./install.sh`。安装器不执行 `git pull`。只安装 MCP 和 Medivh 组件时，执行 `KARAZHAN_INSTALL_SKIP_APP=1 ./install.sh`。联网命令继承代理环境变量。仅需为安装器单独指定代理时，才设置 `KARAZHAN_INSTALL_PROXY`。
+
+## 更新 Agent 脚手架
+
+运行 `node scripts/update-scaffolds.mjs prepare --out <私有目录>`，发现已有 Medivh 和 Custodian，并准备私有预览。可选的 `--workspace` 和 `--medivh-profile` 只选择指定目标。在 `TARGETS.md` 中勾选要跳过的目标，再让执行 Agent 编写并审阅其余指令候选稿。然后运行 `node scripts/update-scaffolds.mjs apply --plan <私有目录>`。更新不构建 App 或 Rust，也不重启 Agent。发现、审阅、冲突与备份说明见[更新流程](docs/scaffold-updates.md)。
 
 ## 使用
 

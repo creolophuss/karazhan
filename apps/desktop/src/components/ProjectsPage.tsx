@@ -17,6 +17,7 @@ import { karazhanClient, type TodayItem, type WorkStatus } from "../lib/karazhan
 import WorkItemQuickControls from "./WorkItemQuickControls.tsx";
 import AddStepModal, { type AddStepTarget } from "./AddStepModal.tsx";
 import TodayRecentSteps from "./TodayRecentSteps.tsx";
+import WorkspacePath from "./WorkspacePath.tsx";
 
 const SYSTEM_ROOT_ID = "00000000-0000-0000-0000-000000000001";
 const PAGE_REFRESH_INTERVAL_MS = 1_000;
@@ -73,6 +74,7 @@ function TreeBranch({
               <span className={`tree-kind ${node.item.kind}`} aria-hidden="true" />
               <span className="tree-row-copy">
                 <span className="tree-path">{node.item.title}</span>
+                <WorkspacePath path={node.item.workspace_path} />
                 {node.item.summary && <span className="today-description">{node.item.summary}</span>}
               </span>
               <span className="tree-kind-label">{node.item.kind}</span>

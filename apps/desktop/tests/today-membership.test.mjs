@@ -218,3 +218,39 @@ test("Today restores the Spike sidebar palette and conditionally opens Zed by no
   assert.match(zed, /className="today-zed-error"/);
   assert.match(styles, /\.today-zed-error\s*\{[\s\S]*?grid-row:\s*2/);
 });
+
+
+test("Today context menus expose ordering for normal rows and quick items", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const quickRow = app.slice(app.indexOf("if (item.is_quick_item) return ("), app.indexOf('className="quick-item-content"'));
+  assert.match(quickRow, /onContextMenu=/);
+  assert.match(app, />Move to top<\/button>/);
+  assert.match(app, />Move to bottom<\/button>/);
+  assert.match(app, /disabled=\{membershipBusy \|\| menuTodayIndex === 0\}/);
+  assert.match(app, /disabled=\{membershipBusy \|\| menuTodayIndex === today.items.length - 1\}/);
+  assert.match(app, /handleReorder\(stepMenu.id, 0\)/);
+  assert.match(app, /handleReorder\(stepMenu.id, today.items.length - 1\)/);
+});
+
+test("Today edge moves preserve other rows and use membership revisions with sparse positions", async () => {
+  const original = [
+    { node_id: "project", position: 2, revision: 4, work_revision: 20 },
+    { node_id: "quick", position: 5, revision: 7, work_revision: 30, is_quick_item: true },
+    { node_id: "task", position: 9, revision: 8, work_revision: 40 },
+  ];
+  const commands = [];
+  const client = { async execute(command) {
+    commands.push(command);
+    return { type: "mutation", payload: { revision: 8, replayed: false } };
+  } };
+  for (const position of [0, original.length - 1]) {
+    const moved = moveTodayItem(original, "quick", position);
+    assert.equal(moved[position].node_id, "quick");
+    assert.deepEqual(moved.filter((item) => item.node_id !== "quick").map((item) => item.node_id), ["project", "task"]);
+    assert.deepEqual(moved.map((item) => item.position), [0, 1, 2]);
+    await reorderTodayMembership(client, "quick", position, original[1].revision, () => `edge-${position}`);
+  }
+  assert.deepEqual(commands.map(({ payload }) => [payload.node_id, payload.target_position, payload.expected_revision]), [["quick", 0, 7], ["quick", 2, 7]]);
+  assert.deepEqual(original.map((item) => item.position), [2, 5, 9]);
+  await assert.rejects(reorderTodayMembership({ async execute() { throw { code: "revision_conflict", message: "Changed elsewhere" }; } }, "quick", 0, 7), { code: "revision_conflict" });
+});

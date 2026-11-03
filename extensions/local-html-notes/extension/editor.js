@@ -15,7 +15,7 @@
     const session = crypto.randomUUID();
     let source, baselineHash, name, notes = [], revision = 0, savedRevision = 0;
     let selection = null, activeNote = null, editingMessageId = null, saveTabId, ready = false, writing = false;
-    let watcher, unresolvedCount = 0;
+    let watcher, unresolvedCount = 0, autosavePaused = false;
     document.querySelector('[data-ln-ui="viewer"]')?.remove();
     const host = document.createElement('div');
     host.dataset.lnUi = 'editor';
@@ -77,7 +77,8 @@
     function annotationStatus() {
       if (writing) return;
       const state = revision !== savedRevision ? '未保存' : savedRevision ? '已保存' : notes.length ? '已载入' : '选中文字开始批注';
-      setStatus(unresolvedCount ? `${state} · ${unresolvedCount} 条批注待定位，数据已保留` : notes.length ? `${state} · ${notes.length} 条高亮` : state);
+      const description = unresolvedCount ? `${state} · ${unresolvedCount} 条批注待定位，数据已保留` : notes.length ? `${state} · ${notes.length} 条高亮` : state;
+      setStatus(autosavePaused ? `${description} · 自动保存已暂停` : description);
     }
     function render() {
       watcher.refresh();
@@ -269,33 +270,62 @@
       textarea.focus();
     };
 
-    save.onclick = async () => {
+    async function saveChanges(automatic = false) {
+      if (writing || !ready) return;
+      writing = true; save.disabled = true; setStatus('保存中…');
       try {
-        if (!writing) setStatus('请在保存页授权或确认保存');
+        const direct = await chrome.runtime.sendMessage({ type: 'ln-save', session });
+        if (!direct?.ok) throw new Error(direct?.error || '无法保存原文件，请重试。');
+        if (!direct.needsAuthorization) return;
+        writing = false; save.disabled = false;
+        if (automatic) {
+          autosavePaused = true;
+          setStatus('自动保存已暂停，请点击「保存」完成文件授权。');
+          return;
+        }
+        setStatus('请在保存页授权后保存');
         const response = await chrome.runtime.sendMessage({ type: 'ln-open-save', session, saveTabId });
         if (!response?.ok) throw new Error(response?.error || '无法打开保存页。');
         saveTabId = response.tabId;
-      } catch (error) { tell(error.message); }
-    };
+      } catch (error) {
+        autosavePaused = true;
+        writing = false; save.disabled = false;
+        setStatus(`${error.message} 自动保存已暂停，请手动保存或刷新。`); tell(error.message);
+      }
+    }
+    save.onclick = event => { if (event.isTrusted) void saveChanges(); };
+    window.addEventListener('keydown', event => {
+      if (!event.isTrusted || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) void saveChanges();
+    }, true);
+    window.setInterval(() => {
+      if (ready && !writing && !autosavePaused && revision !== savedRevision) void saveChanges(true);
+    }, 30_000);
     chrome.runtime.onMessage.addListener((message, sender, reply) => {
       if (sender.id !== chrome.runtime.id || message.session !== session) return;
       try {
         if (message.type === 'ln-snapshot') {
           if (!ready) throw new Error('批注工具尚未就绪。');
-          reply({ ok: true, snapshot: { source, hash: baselineHash, notes: structuredClone(notes), revision, name, url: location.href } });
+          const snapshot = { source, hash: baselineHash, notes: structuredClone(notes), revision, name, url: location.href };
+          if (message.serialize) snapshot.serializedSource = core.serialize(source, snapshot.notes);
+          reply({ ok: true, snapshot });
         } else if (message.type === 'ln-saving') {
           writing = true; save.disabled = true; setStatus('保存中…'); reply({ ok: true });
         } else if (message.type === 'ln-saved') {
           source = message.source;
           baselineHash = message.hash;
           savedRevision = message.revision;
+          autosavePaused = false;
           writing = false; save.disabled = false;
           annotationStatus();
           if (message.warning) tell(message.warning);
           reply({ ok: true });
         } else if (message.type === 'ln-save-error') {
+          autosavePaused = true;
           writing = false; save.disabled = false;
-          setStatus(message.error);
+          setStatus(`${message.error} 自动保存已暂停，请手动保存或刷新。`);
           tell(message.error); reply({ ok: true });
         }
       } catch (error) { reply({ ok: false, error: error.message }); }

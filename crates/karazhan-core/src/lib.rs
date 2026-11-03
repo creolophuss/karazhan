@@ -452,6 +452,7 @@ pub struct ProjectTaskItem {
     pub position: i64,
     pub revision: i64,
     pub has_steps: bool,
+    pub workspace_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -471,6 +472,7 @@ pub struct TodayItem {
     pub blocker: Option<String>,
     pub has_steps: bool,
     pub has_available_workspace: bool,
+    pub workspace_path: Option<String>,
     pub child_items: Vec<ProjectTaskItem>,
     pub is_quick_item: bool,
 }
@@ -1233,7 +1235,9 @@ impl Database {
                     EXISTS (SELECT 1 FROM progress_events pe
                             WHERE pe.subject_node_id = n.id
                               AND pe.event_type IN ('progress', 'delivery')
-                              AND pe.summary <> 'work item fields updated')
+                              AND pe.summary <> 'work item fields updated'),
+                    (SELECT locator FROM resource_bindings rb
+                     WHERE rb.node_id = n.id AND rb.kind = 'workspace' AND rb.is_primary = 1)
              FROM work_nodes n
              WHERE n.kind IN ('project', 'task')
                AND NOT EXISTS (
@@ -1261,6 +1265,7 @@ impl Database {
                     position: row.get(11)?,
                     revision: row.get(12)?,
                     has_steps: row.get(13)?,
+                    workspace_path: row.get(14)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?)
@@ -1551,7 +1556,9 @@ impl Database {
                                 WHERE pe.subject_node_id = n.id
                                   AND pe.event_type IN ('progress', 'delivery')
                                   AND pe.summary <> 'work item fields updated'),
-                        COALESCE((SELECT is_quick_item FROM tasks WHERE node_id = n.id), 0)
+                        COALESCE((SELECT is_quick_item FROM tasks WHERE node_id = n.id), 0),
+                        (SELECT locator FROM resource_bindings rb
+                         WHERE rb.node_id = n.id AND rb.kind = 'workspace' AND rb.is_primary = 1)
                  FROM today_items ti
                  JOIN work_nodes n ON n.id = ti.node_id
                  WHERE n.archived_at IS NULL
@@ -1572,6 +1579,7 @@ impl Database {
                         row.get::<_, Option<String>>(9)?,
                         row.get::<_, bool>(10)?,
                         row.get::<_, bool>(11)?,
+                        row.get::<_, Option<String>>(12)?,
                     ))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?
@@ -1591,6 +1599,7 @@ impl Database {
             blocker,
             mut has_steps,
             is_quick_item,
+            workspace_path,
         ) in explicit_items
         {
             if kind == "project" {
@@ -1650,7 +1659,9 @@ impl Database {
                             EXISTS (SELECT 1 FROM progress_events pe
                                     WHERE pe.subject_node_id = n.id
                                       AND pe.event_type IN ('progress', 'delivery')
-                                      AND pe.summary <> 'work item fields updated')
+                                      AND pe.summary <> 'work item fields updated'),
+                            (SELECT locator FROM resource_bindings rb
+                             WHERE rb.node_id = n.id AND rb.kind = 'workspace' AND rb.is_primary = 1)
                      FROM child_tree
                      JOIN work_nodes n ON n.id = child_tree.id
                      ORDER BY child_tree.sort_path",
@@ -1678,6 +1689,7 @@ impl Database {
                 blocker,
                 has_steps,
                 has_available_workspace,
+                workspace_path,
                 child_items,
                 is_quick_item,
             });
@@ -3861,6 +3873,7 @@ fn project_task_item_from_row(row: &Row<'_>) -> rusqlite::Result<ProjectTaskItem
         position: row.get(11)?,
         revision: row.get(12)?,
         has_steps: row.get(13)?,
+        workspace_path: row.get(14)?,
     })
 }
 

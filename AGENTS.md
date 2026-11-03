@@ -21,6 +21,14 @@ In user conversations, reports, and other prose, follow ASD-STE100 Simplified Te
 
 Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.html).
 
+## HTML explanations
+
+Choose HTML when a page helps explain relationships, comparisons, evidence, or interactive behavior. Build the page directly. Select its structure, diagrams, and interactions for the content. Preserve substantive detail and sources. Do not require a presentation Skill, renderer, or fixed template. Keep ASD-STE100 principles in English and Chinese. Store generated pages in the owning Workspace artifacts and provide a clickable path.
+
+## Karazhan MCP delegation
+
+The primary Agent delegates authorized MCP registration and synchronization, including prerequisite queries and write verification, to a subagent after saving the local result. Continue independent work without immediately waiting; wait only when the next action depends on the verified result. Follow the role-appropriate MCP Skill. The delegated MCP executor performs the workflow directly and must not delegate it again. Delegation preserves ownership, permissions and actor provenance; it does not start another Custodian or create a Child Workspace. If no suitable executor is available, retain synchronization as pending instead of performing a blocking MCP write on the primary Agent.
+
 ## Engineering boundaries
 
 - React uses the central TypeScript client. It does not access SQLite, files, or a shell directly.

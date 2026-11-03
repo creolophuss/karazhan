@@ -33,6 +33,8 @@ Backlog kinds are `idea`, `problem`, `request`, and `research`. Lifecycle values
 
 Today is an explicitly selected, manually ordered projection of Projects and Tasks. Membership and ordering do not change Work Tree positions, priority, or status. Backlog cannot enter Today. Removing a normal item from Today does not delete its Work Tree node.
 
+Each independent Today row, including a quick item, offers **Move to top** and **Move to bottom** in its context menu. These actions save the same order as pointer dragging. Disable an action when the row is already at that end, and disable both while a membership operation is saving. Preserve Add step on normal rows. Embedded descendants keep their hierarchy order and do not gain Today membership from opening the menu.
+
 A Project card includes recursive Child Projects and Tasks that do not have their own Today card. An independently selected descendant and its subtree stop appearing in the ancestor card. Project progress aggregates only the descendants still represented by that card and identifies the source.
 
 Recent steps shows business progress, deliveries, and manual Steps. Field audits and Today membership/order events remain in the complete timeline without filling Recent steps. Compact views show short summaries. The full Action log also shows optional details. Quick items are ordinary Tasks with a quick-item flag, shown in Today and omitted from Projects & Tasks; their checkbox changes the same Task status.
@@ -40,6 +42,8 @@ Recent steps shows business progress, deliveries, and manual Steps. Field audits
 ### Projects & Tasks
 
 Support recursive display, expand/collapse, legal moves, sibling ordering, status and priority changes, manual Steps, Today membership, and recursive archive. Projects can contain Child Projects and Tasks; Tasks can contain Child Tasks. The central client must prevent older asynchronous responses from replacing newer filter results. Visible Today and Projects & Tasks refresh after external changes and on window focus/visibility, without overlapping requests or resetting expansion state.
+
+Today and Projects & Tasks show each Project or Task's own primary Workspace locator under its title, including descendants and quick Tasks. Show the registered path even when unavailable, with ellipsis and a full-path tooltip. Show “未绑定工作目录” when absent. Do not use Context or Parent paths. Shared read projections add nullable `workspace_path`. Archive presentation and Open in Zed safety checks remain unchanged.
 
 ### Backlog and Archive
 
@@ -75,7 +79,7 @@ Write durable local files before structured synchronization. Local requirements 
 
 Retain enough local information to recover an uncertain write, including its exact request. Use stable idempotency and expected revisions. Independently query after a write; for progress, check recent events first and use the full timeline if needed. Complete handoffs belong at phase acceptance, ownership transfer, deliberate stopping for recovery, or a major baseline switch. Append history; do not maintain conflicting status copies. User acceptance controls `done`.
 
-The startup package contains [workspace-provisioning](../blueprints/skills/workspace-provisioning/SKILL.md), [karazhan-mcp-collaboration](../blueprints/skills/karazhan-mcp-collaboration/SKILL.md), and [answer-me-with-html](../blueprints/skills/answer-me-with-html/SKILL.md). HTML explanations use the Skill's native selection rules, a Workspace-local artifact directory, and `--no-open`; do not enable it for every reply. Preserve upstream notices and license files. Upgrade managed copies through the source/package workflow.
+The startup package contains [workspace-provisioning](../blueprints/skills/workspace-provisioning/SKILL.md) and [karazhan-mcp-collaboration](../blueprints/skills/karazhan-mcp-collaboration/SKILL.md). Agents may choose HTML when the content benefits. Generate pages directly with structure and interactions suited to the material. Do not require a presentation Skill, renderer, or fixed template. Preserve substantive explanations and evidence. Use ASD-STE100 principles in English and Chinese. Historical generated artifacts remain user data. See [HTML practices and prompt examples](html-output-practices.md) for optional reference material.
 
 ## Installation and updates
 
@@ -88,6 +92,20 @@ Check cmux and Zed before build/download work. Find the CLI on `PATH` or the App
 Network commands inherit standard proxy environment variables. `KARAZHAN_INSTALL_PROXY` is an optional override for installer network subprocesses. No fixed loopback proxy is the default, and no global proxy configuration changes.
 
 Normal release builds avoid a repository-local launchable `.app`. Installation bundles in a temporary target and retains one installed App, avoiding duplicate bundle IDs. The `medivh` launcher checks its profile process and PID lock before starting `hermes -p medivh chat`. It refuses duplicate active launches and clears only its own stale lock.
+
+### Existing Agent scaffold updates
+
+See [the scaffold update workflow](scaffold-updates.md) for commands, private preview files, candidate review, and failure handling.
+
+The scaffold-only Node updater prepares a private preview without building, installing, calling a model API, or restarting Agents. `prepare --out <private-directory>` discovers Project and Task Workspace bindings through read-only Karazhan queries, verifies local manifests, and follows known Workspace children and explicit index paths to find unregistered local work. Discover Medivh from installation information and the default Profile location. Optional `--workspace` and `--medivh-profile` select explicit targets. Report missing or conflicting targets. Do not create absent Workspaces or scan the whole home directory. Deduplicate canonical paths and stable identities.
+
+Prepare stores source snapshots, target baselines, requirement references, and proposed changes. The executing LLM composes AGENTS.md candidates from existing instructions, new source material, and business requirements, then reviews the diff. Automatic merge output is advisory. The script does not call a model. `apply --plan <private-directory>` handles only prepared targets and reviewed candidates. Recheck identity and source/target baselines, back up managed files, and restore a failed target on error. Reapplying the same update is a no-op. Retain source and installed baselines for later updates.
+
+After prepare, present a target checklist and wait for the user to finish selecting before LLM composition. Each checkbox means skip that Project, Task, or Medivh Workspace only; it does not implicitly exclude descendants. Apply consumes the saved checklist. Do not review, validate, back up, or write skipped targets. Their conflicts do not block selected targets. All skipped is a successful no-op. A missing or malformed checklist on a new preview stops apply; legacy previews remain supported.
+
+When a selected managed Skill has local changes, the executing Agent can explicitly review and merge it into a per-target candidate. Record the original checksum, candidate checksum, action, and review notes. Apply accepts that resolution only for prepared managed paths and unchanged target content. Retiring an unverified old presentation Skill needs an explicit reviewed removal tied to its current checksum. Preserve the old content in the private backup. Do not clear conflict records to bypass ownership checks; unreviewed conflicts still stop apply.
+
+Preserve identity, Context, logs, repositories, Hooks, custom Skills, and Medivh memories, sessions, and unrelated configuration. Retire only verified unmodified managed answer-me-with-html copies. Modified or uncertain copies are conflicts. Preserve generated HTML and historical backups. Existing generated AGENTS.md files use the LLM workflow; the installer preserves them and reports pending scaffold updates while maintaining App/MCP. Fresh installations use canonical scaffolds. This delivery develops and tests the capability without updating live Profiles or Workspaces.
 
 ## MCP configuration
 
@@ -169,3 +187,15 @@ Explicit backup and restore are tested Rust core APIs. They have no end-user des
 Use `npm ci`, then `npm run check`. The gate runs Rust formatting, strict Clippy, Rust tests, frontend tests, TypeScript checks, and a production frontend build. Tests use synthetic data, memory databases, and temporary directories. Preserve behavioral coverage for migrations, revisions, idempotency, atomic rollback, adapter contracts, safe paths, installer ownership, and notification confirmation/routing.
 
 Keep credentials, personal Context, local Agent configuration, execution logs, reports, screenshots, and database files outside tracked source. Tests must not read personal data or migrate real Workspaces. The App stores data locally and offers no remote multi-user access or cloud sync.
+
+
+## Local HTML notes extension
+
+The independent `extensions/local-html-notes` component edits UTF-8 local HTML. On macOS Edge, Save uses an installed Native Messaging helper to overwrite the current report without a file picker, including the first save. Install the helper once for the exact extension ID. It runs for one request and exits, with no Agent, model, server or open network port. The background worker derives the target from the sending top-level file tab, obtains a session-bound snapshot, and sends only that URL, its expected SHA-256 and the serialized HTML. The host accepts only existing regular UTF-8 `.html` files, refuses symlinks, detects external changes, serializes writes with a temporary lock and replaces through a temporary file. Preserve file permissions, clean temporary files on ordinary failure, and keep unsaved annotations after failure. A missing helper gives an installation message rather than opening a picker or silently downloading a copy. Browsers without Native Messaging retain the previous explicit file-authorization flow. Existing conversation data and the report scripts stay compatible. See the component [README](../extensions/local-html-notes/README.md).
+
+The HTML notes editor also saves with Ctrl+S or Cmd+S, suppressing the browser Save As action. Every 30 seconds, save only when submitted annotations have unsaved changes and no write is running. Unsubmitted comment drafts stay in the input box. Reuse the same conflict checks and file writer. After a failure, pause automatic saves until a successful manual save or page reload. Never open an authorization tab from the timer. Background-tab timers can be delayed by the browser.
+
+
+## Delegated MCP registration and synchronization
+
+After durable local work exists, the primary Medivh or Custodian delegates an authorized MCP operation, its prerequisite queries and independent verification to one subagent. The runtime's native subagent tool starts this work; a Skill provides instructions, not an event listener or scheduler. The primary Agent continues independent work and waits only for a result needed by the next action. Same-Work writes run serially, and the executor does not delegate again. Preserve role permissions, provenance, revision/idempotency checks, durable pending requests and verified-result reporting. The executor only appends request/result records to the existing log; the primary Agent owns business files and handoff indexes. If no capable executor is available, retain pending work without a blocking primary-Agent write. This rule does not delegate software installation or upgrades, add an API/service, or upgrade existing Agent installations automatically.

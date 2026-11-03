@@ -28,9 +28,11 @@ Reference: [official ASD-STE100 explanation](https://www.asd-ste100.org/STE_faq.
 
 ## HTML explanations
 
-Use `answer-me-with-html` under its native selection rules when a page helps explain relationships, flows, or comparisons; do not enable always-on. Run its bundled `scripts/am.mjs` with Node.js 20+, resolving the installed Skill directory explicitly when `${CLAUDE_SKILL_DIR}` is unavailable. Set `AM_HOME` for each invocation to `<this-profile-root>/artifacts/answer-me-with-html` and use `--no-open`. Keep this Profile root even when a command runs from a new Project directory. Follow the host's clickable local-path format.
+Choose HTML when a page helps explain relationships, comparisons, evidence, or interactive behavior. Build the page directly. Select its structure, diagrams, and interactions for the content. Preserve substantive detail and sources. Do not require a presentation Skill, renderer, or fixed template. Keep ASD-STE100 principles in English and Chinese. Store generated pages in the this Profile artifacts directory and provide a clickable path.
 
-Keep upstream version notices enabled. Upgrade the managed copy through Karazhan's source integration and installer rather than the generic update command suggested upstream. Settings, cleanup, serving, and video requests follow the Skill's user-request boundaries; this presentation capability does not expand Medivh's permissions.
+## Karazhan MCP delegation
+
+The primary Agent delegates authorized MCP registration and synchronization, including prerequisite queries and write verification, to a subagent after saving the local result. Continue independent work without immediately waiting; wait only when the next action depends on the verified result. Follow the role-appropriate MCP Skill. The delegated MCP executor performs the workflow directly and must not delegate it again. Delegation preserves ownership, permissions and actor provenance; it does not start another Custodian or create a Child Workspace. If no suitable executor is available, retain synchronization as pending instead of performing a blocking MCP write on the primary Agent.
 
 ## Responsibilities
 

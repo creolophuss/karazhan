@@ -1861,6 +1861,179 @@ fn resource_binding_identity_and_progress_source_ownership_are_enforced() {
 }
 
 #[test]
+fn workspace_paths_use_each_nodes_primary_binding_in_tree_and_today() {
+    let mut db = Database::open_in_memory().unwrap();
+    let child_project_id = "10000000-0000-0000-0000-000000000002";
+    for value in [
+        node(PROJECT_ID, NodeKind::Project, SYSTEM_ROOT_ID, "project", 0),
+        node(TASK_ID, NodeKind::Task, PROJECT_ID, "task", 0),
+        node(child_project_id, NodeKind::Project, PROJECT_ID, "child", 1),
+        node(CHILD_TASK_ID, NodeKind::Task, TASK_ID, "child-task", 0),
+    ] {
+        create(&mut db, value).unwrap();
+    }
+    db.connection
+        .execute(
+            "UPDATE projects SET context_path = '/context-not-workspace' WHERE node_id = ?1",
+            [PROJECT_ID],
+        )
+        .unwrap();
+    for (index, node_id, kind, primary, path) in [
+        (
+            1,
+            PROJECT_ID,
+            ResourceKind::Workspace,
+            true,
+            "/workspace/project",
+        ),
+        (
+            2,
+            TASK_ID,
+            ResourceKind::Workspace,
+            false,
+            "/secondary/task",
+        ),
+        (3, TASK_ID, ResourceKind::Directory, true, "/directory/task"),
+        (
+            4,
+            CHILD_TASK_ID,
+            ResourceKind::Workspace,
+            true,
+            "/workspace/child-task",
+        ),
+    ] {
+        let id = format!("50000000-0000-0000-0000-{index:012}");
+        db.add_resource_binding(
+            NewResourceBinding {
+                id: &id,
+                node_id,
+                kind,
+                locator: path,
+                is_primary: primary,
+                availability: if node_id == PROJECT_ID {
+                    ResourceAvailability::Missing
+                } else {
+                    ResourceAvailability::Unreadable
+                },
+                source: "test",
+            },
+            metadata(&format!("workspace-binding-{index}")),
+        )
+        .unwrap();
+    }
+    let expected = [
+        (PROJECT_ID, Some("/workspace/project")),
+        (TASK_ID, None),
+        (child_project_id, None),
+        (CHILD_TASK_ID, Some("/workspace/child-task")),
+    ];
+    let tree = serde_json::to_value(db.list_project_task_tree().unwrap()).unwrap();
+    for (id, path) in expected {
+        let item = tree
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == id)
+            .unwrap();
+        assert_eq!(
+            item.get("workspace_path"),
+            Some(&serde_json::json!(path)),
+            "{id}"
+        );
+    }
+    db.add_to_today(PROJECT_ID, 0, EVENT_ID, metadata("workspace-today-project"))
+        .unwrap();
+    let today = serde_json::to_value(db.list_today().unwrap()).unwrap();
+    assert_eq!(today[0]["workspace_path"], "/workspace/project");
+    assert_eq!(today[0]["has_available_workspace"], false);
+    for (id, path) in &expected[1..] {
+        let child = today[0]["child_items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == *id)
+            .unwrap();
+        assert_eq!(
+            child.get("workspace_path"),
+            Some(&serde_json::json!(path)),
+            "{id}"
+        );
+    }
+    db.add_to_today(
+        TASK_ID,
+        1,
+        "40000000-0000-0000-0000-000000000002",
+        metadata("workspace-today-task"),
+    )
+    .unwrap();
+    let today = serde_json::to_value(db.list_today().unwrap()).unwrap();
+    assert_eq!(
+        today[1].get("workspace_path"),
+        Some(&serde_json::Value::Null)
+    );
+    assert_eq!(
+        today[1]["child_items"][0]["workspace_path"],
+        "/workspace/child-task"
+    );
+}
+
+#[test]
+fn workspace_paths_remain_visible_for_all_availability_states_and_quick_tasks() {
+    let mut db = Database::open_in_memory().unwrap();
+    db.create_quick_item(
+        TASK_ID,
+        "Quick task",
+        EVENT_ID,
+        metadata("workspace-quick-task"),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(db.list_today().unwrap()).unwrap()[0].get("workspace_path"),
+        Some(&serde_json::Value::Null)
+    );
+    let binding_id = "50000000-0000-0000-0000-000000000001";
+    db.add_resource_binding(
+        NewResourceBinding {
+            id: binding_id,
+            node_id: TASK_ID,
+            kind: ResourceKind::Workspace,
+            locator: "/workspace/quick-task",
+            is_primary: true,
+            availability: ResourceAvailability::Available,
+            source: "test",
+        },
+        metadata("workspace-quick-binding"),
+    )
+    .unwrap();
+    for (index, availability) in [
+        ResourceAvailability::Available,
+        ResourceAvailability::Missing,
+        ResourceAvailability::Unreadable,
+        ResourceAvailability::Unknown,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if index > 0 {
+            db.update_resource_availability(
+                binding_id,
+                availability,
+                index as i64,
+                metadata(&format!("workspace-state-{index}")),
+            )
+            .unwrap();
+        }
+        let today = db.list_today().unwrap();
+        assert!(today[0].is_quick_item);
+        assert_eq!(
+            serde_json::to_value(&today[0]).unwrap()["workspace_path"],
+            "/workspace/quick-task"
+        );
+        assert_eq!(today[0].has_available_workspace, index == 0);
+    }
+}
+
+#[test]
 fn resource_bindings_support_shared_locators_and_availability_updates() {
     let mut db = Database::open_in_memory().unwrap();
     create(

@@ -514,6 +514,7 @@ export interface TodayItem {
   blocker: string | null;
   has_steps: boolean;
   has_available_workspace: boolean;
+  workspace_path: string | null;
   child_items: ProjectTaskItem[];
   is_quick_item: boolean;
 }
@@ -533,6 +534,7 @@ export interface ProjectTaskItem {
   position: number;
   revision: number;
   has_steps: boolean;
+  workspace_path: string | null;
 }
 
 export interface BacklogItem {
