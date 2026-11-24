@@ -27,6 +27,8 @@ Choose HTML when a page helps explain relationships, comparisons, evidence, or i
 
 ## Karazhan MCP delegation
 
+Prepared Codex Workspaces start the hourly progress timer by default. An active timer owns ordinary progress for its bound main thread. Use the scheduled executor for those events. Keep evidence and handoffs in the Workspace. The following delegation rule applies to other authorized operations.
+
 The primary Agent delegates authorized MCP registration and synchronization, including prerequisite queries and write verification, to a subagent after saving the local result. Continue independent work without immediately waiting; wait only when the next action depends on the verified result. Follow the role-appropriate MCP Skill. The delegated MCP executor performs the workflow directly and must not delegate it again. Delegation preserves ownership, permissions and actor provenance; it does not start another Custodian or create a Child Workspace. If no suitable executor is available, retain synchronization as pending instead of performing a blocking MCP write on the primary Agent.
 
 ## Engineering boundaries

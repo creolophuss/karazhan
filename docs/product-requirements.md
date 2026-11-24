@@ -81,6 +81,28 @@ Retain enough local information to recover an uncertain write, including its exa
 
 The startup package contains [workspace-provisioning](../blueprints/skills/workspace-provisioning/SKILL.md) and [karazhan-mcp-collaboration](../blueprints/skills/karazhan-mcp-collaboration/SKILL.md). Agents may choose HTML when the content benefits. Generate pages directly with structure and interactions suited to the material. Do not require a presentation Skill, renderer, or fixed template. Preserve substantive explanations and evidence. Use ASD-STE100 principles in English and Chinese. Historical generated artifacts remain user data. See [HTML practices and prompt examples](html-output-practices.md) for optional reference material.
 
+### Scheduled Codex progress
+
+The macOS progress timer is on by default. Provisioning installs a Workspace-local Codex hook. Starting or resuming the first eligible main thread binds the Project or Task Workspace and starts its hourly schedule. An existing binding keeps its thread, interval and checkpoint. A Workspace with an explicit opt-out stays off across starts and resumes. A checkpoint identifies new user and assistant messages, including messages recorded during an active turn. The timer verifies the thread ID and owning Workspace on each read. [Codex thread history API](https://developers.openai.com/codex/app-server/#read-a-stored-thread-without-resuming)
+
+When eligible messages arrive, the timer uses `codex exec fork --ephemeral <THREAD_ID>` on the bound main thread. The fork can use earlier discussion to interpret a new decision such as “go with the second option.” Only changes established by the selected messages are eligible for a new progress event. The input filter covers those candidates. Codex supplies the inherited thread history separately and that history can include tool output and private turns. Starting a turn with “keep this local” or “请勿同步” excludes it from progress reporting. The classifier must omit private material from summaries. Idle checks skip the model call and can still synchronize pending events.
+
+The timer records a reviewable delivery, a material decision or a blocker change in `agent_log.md` first. It then appends and independently verifies the corresponding Karazhan Action log entry. Routine discussion and repeated results are skipped. On a successful start or resume the hook tells the bound thread to leave ordinary progress reporting to the timer. The primary Custodian continues to save evidence and formal handoffs and owns explicit field changes. Existing Custodians can adopt the packaged timer through the scaffold update workflow. [Scaffold update workflow](scaffold-updates.md)
+
+Use Python 3.9 or later, a signed-in Codex CLI with `thread/turns/list` and `exec fork --ephemeral --output-schema`, and the installed `karazhan-mcp`. The timer reads the database path from `KARAZHAN_DATABASE_PATH` or the configured Codex `karazhan` stdio MCP server. The commands below run from the owning Workspace.
+
+```sh
+python3 /absolute/path/to/karazhan/scripts/codex_progress.py status
+python3 /absolute/path/to/karazhan/scripts/codex_progress.py disable
+python3 /absolute/path/to/karazhan/scripts/codex_progress.py enable --interval 7200
+```
+
+`status` shows the default or saved preference in `auto_start` and activation in `enabled`. `disable` also works before the first session. `enable` clears the opt-out and can use `CODEX_THREAD_ID` or an explicit `--thread`. Use `--database` for an explicit database path and `--workspace` for a specific Workspace. To change an active interval or switch main threads, disable the job and enable it with the new settings.
+
+Provisioning uses the timer bundled in `.agents/skills/workspace-provisioning/scripts/`. In an older Workspace, run the timer's `install-hook` command once to merge its hooks with existing Codex settings. Review the hooks in Codex when prompted. For an already running session, `startup` applies the default immediately and honors a saved opt-out. A new binding starts at the current end of the conversation. If Codex first makes the history available at the end of a turn, the hook includes that turn. [Codex hook events and trust](https://developers.openai.com/codex/hooks/)
+
+The per-Work LaunchAgent runs while the macOS user is logged in, including when the Karazhan window is closed. The job reads its paths from the private `.workbench/codex-progress.json`. A Workspace lock serializes timer and manual `run` invocations. If Karazhan is offline, the timer keeps recording local facts. The next run checks uncertain events before replaying an identical request. After an explicit revision rejection it checks for the event, obtains the current revision and records a new request with a separate key. A confirmed write awaiting verification only needs another query. `status` reports the pending count and last error. Disable removes the LaunchAgent and retains local recovery records.
+
 ## Installation and updates
 
 The [README](../README.md#install-from-source) describes supported source installation. The installer builds the current clean, complete checkout. Managed versions use Tauri's major/minor and the reachable commit count as patch. Record the source commit and content baseline per target. Higher versions update, equal versions are a no-op, missing targets can be restored, and downgrades are rejected. Locally changed managed files and conflicting existing MCP configuration stop installation. Back up unversioned targets before adoption.
@@ -197,5 +219,7 @@ The HTML notes editor also saves with Ctrl+S or Cmd+S, suppressing the browser S
 
 
 ## Delegated MCP registration and synchronization
+
+For ordinary Codex conversation progress, an enabled timer acts as the delegated executor for its pinned thread. The following workflow covers other authorized operations and Workspaces that use foreground delegation.
 
 After durable local work exists, the primary Medivh or Custodian delegates an authorized MCP operation, its prerequisite queries and independent verification to one subagent. The runtime's native subagent tool starts this work; a Skill provides instructions, not an event listener or scheduler. The primary Agent continues independent work and waits only for a result needed by the next action. Same-Work writes run serially, and the executor does not delegate again. Preserve role permissions, provenance, revision/idempotency checks, durable pending requests and verified-result reporting. The executor only appends request/result records to the existing log; the primary Agent owns business files and handoff indexes. If no capable executor is available, retain pending work without a blocking primary-Agent write. This rule does not delegate software installation or upgrades, add an API/service, or upgrade existing Agent installations automatically.

@@ -12,8 +12,9 @@ Karazhan 是一个本地优先的 macOS 工作台，适合同时与多个 Agent 
 - 桌面界面、stdio MCP 和本机 HTTP 适配器共用 Rust 业务核心。
 - 提供 Medivh 和 Custodian 的指令及 Skill，支持本地文件工作流程。
 - 预览 Context 通知，将用户批准的文字发送到已登记的 Codex 或 Claude 会话。
+- 定时检查指定的 Codex 主线程，将重要变化写入 Workspace 日志和 Karazhan。
 
-Karazhan 不启动或调度 Agent，不索引 Context 文件，也不提供云同步。当前桌面端没有 Search 和 Settings/Import 页面。通知适配器支持 Codex queue 和 Claude/cmux，尚未接入 Hermes 接收。
+用户负责启动每个 Custodian。Karazhan 不索引 Context 文件，也不提供云同步。当前桌面端没有 Search 和 Settings/Import 页面。通知适配器支持 Codex queue 和 Claude/cmux，尚未接入 Hermes 接收。
 
 ## 从源码安装
 
@@ -58,6 +59,8 @@ cd karazhan
 从 Applications 启动 Karazhan。使用 `medivh` 创建顶层 Project Workspace，并通过 MCP 登记。Medivh 也可以记录用户明确要求的 Backlog。然后，由用户在该 Workspace 中启动 Project 的 Custodian。Custodian 先维护本地文件，再同步自己负责的结构化工作。
 
 Context 通知用法见 `node scripts/context-notify.mjs --help`。适配器不依赖 App 或常驻服务。会话登记、本地 Hook、MCP 配置和数据安全说明见[产品与集成参考](docs/product-requirements.md)。
+
+在已配置的 Workspace 中启动首个 Codex 主线程时，macOS 进度定时任务会自动开启。任务默认每小时检查交付、决定和阻塞变化。使用 `disable` 可持续关闭，使用 `enable --interval 7200` 可选择两小时。[定时任务设置](docs/product-requirements.md#scheduled-codex-progress)
 
 ## 开发
 

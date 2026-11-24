@@ -56,6 +56,8 @@ Create only what the work needs:
 9. `context/coordination/` only after direct Children exist;
 10. `repos/` only for real development work with an inspected repository baseline.
 
+On macOS, run `python3 -B .agents/skills/workspace-provisioning/scripts/codex_progress.py install-hook` from the new Workspace after writing its manifest. This installs its local Codex progress hook. The first eligible Codex main thread starts the hourly timer. Provisioning itself only prepares the hook.
+
 Even a leaf Child must check explicitly referenced upstream decisions. Do not create local coordination merely to read the Parent's decisions. Only inputs actually shared need retained versions; do not version every draft or create empty release directories. Preserve legacy Workspaces under their existing contracts rather than migrating fields, links, or logs during provisioning/repair.
 
 The local `work.id` is generated before any MCP call and is intended to become the same Karazhan node ID when the responsible Custodian registers the work.

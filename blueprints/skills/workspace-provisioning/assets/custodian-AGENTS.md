@@ -61,6 +61,8 @@ Generate a separate report or hash manifest only for a user request, a concrete 
 
 ## Karazhan MCP delegation
 
+The hourly Codex timer starts by default when the Workspace hook runs. On the first Codex start after upgrading an older Workspace, install any missing progress hooks with `python3 -B .agents/skills/workspace-provisioning/scripts/codex_progress.py install-hook`. Codex handles hook trust. If the hook did not confirm ownership, check `.workbench/codex-progress.json`. When `enabled` is true and `thread` matches `CODEX_THREAD_ID`, leave ordinary progress reporting to the timer. Continue to save evidence, decisions and formal handoffs. Delegate other authorized MCP operations as usual.
+
 The primary Agent delegates authorized MCP registration and synchronization, including prerequisite queries and write verification, to a subagent after saving the local result. Continue independent work without immediately waiting; wait only when the next action depends on the verified result. Follow the role-appropriate MCP Skill. The delegated MCP executor performs the workflow directly and must not delegate it again. Delegation preserves ownership, permissions and actor provenance; it does not start another Custodian or create a Child Workspace. If no suitable executor is available, retain synchronization as pending instead of performing a blocking MCP write on the primary Agent.
 
 ## Working rule

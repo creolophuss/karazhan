@@ -55,6 +55,8 @@ ResourceBinding writes register locators only; they do not read, scan, upload, o
 
 ## Ordinary progress
 
+The Codex progress timer starts by default in a prepared Workspace. When its active binding matches the current main thread, the timer is the delegated executor for ordinary conversation progress. It records important facts locally, appends the event and verifies it. Leave these events to the timer. The primary Agent owns authoritative files, handoffs and explicit field changes. Check the timer's pending count and error when recovering an uncertain write.
+
 Synchronize the first complete result that meets the current explicit delivery conditions, actual phase deliveries, major milestones, and blocker/condition changes that affect execution or need user attention. A draft, ordinary revision, wording change, or repeat display does not qualify as a new delivery. A reply ending does not end a phase. Merge ordinary steps into the next meaningful update; there is no timed-update obligation.
 
 Decide whether synchronization is due before entering the steps below. Reuse the durable local conclusion; do not reread the task records just to prepare a reply. Merge ordinary analysis, edits, small fixes, and test results into the local log at actual delivery or a deliberate stop that needs recovery. Preserve critical authorization, execution-affecting decisions, blockers, and pending external operations promptly; reference existing authoritative content and evidence without repeating it.
