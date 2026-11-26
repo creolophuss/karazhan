@@ -113,7 +113,7 @@ Check cmux and Zed before build/download work. Find the CLI on `PATH` or the App
 
 Network commands inherit standard proxy environment variables. `KARAZHAN_INSTALL_PROXY` is an optional override for installer network subprocesses. No fixed loopback proxy is the default, and no global proxy configuration changes.
 
-Normal release builds avoid a repository-local launchable `.app`. Installation bundles in a temporary target and retains one installed App, avoiding duplicate bundle IDs. The `medivh` launcher checks its profile process and PID lock before starting `hermes -p medivh chat`. It refuses duplicate active launches and clears only its own stale lock.
+Normal release builds avoid a repository-local launchable `.app`. Installation bundles in a temporary target and retains one installed App, avoiding duplicate bundle IDs. The `medivh` launcher uses a per-profile PID lock. Plain `medivh` starts `hermes -p medivh chat`. With `medivh codex --add-dir "/existing/project parent"`, the launcher starts Codex in the Medivh profile using the workspace-write sandbox. Repeat `--add-dir` for each selected parent where Medivh will create a Project. Both launch modes use the same lock. [Codex CLI options](https://learn.chatgpt.com/docs/cli/reference)
 
 ### Existing Agent scaffold updates
 

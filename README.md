@@ -58,6 +58,8 @@ Use `node scripts/update-scaffolds.mjs prepare --out <private-directory>` to dis
 
 Start Karazhan from Applications. Use `medivh` to prepare a top-level Project Workspace and register it through MCP. Medivh can also capture Backlog items you explicitly request. You then start the Project's Custodian in that Workspace. The Custodian keeps local files first and synchronizes its own structured work.
 
+To use Codex, run `medivh codex --add-dir "/absolute/path/to/projects"`. Choose the existing parent directory where Medivh will create the new Workspace. Repeat `--add-dir` if the session needs another parent. Codex starts in the Medivh profile.
+
 For Context notifications, run `node scripts/context-notify.mjs --help`. The adapter works without the App or a resident service. See the [product and integration reference](docs/product-requirements.md) for session registration, local Hooks, MCP configuration, and data safety.
 
 The macOS progress timer starts automatically for the first Codex main thread in a prepared Workspace. It checks hourly for deliveries, decisions and blocker changes. Use `disable` to keep the timer off or `enable --interval 7200` to select two hours. [Timer setup and controls](docs/product-requirements.md#scheduled-codex-progress).

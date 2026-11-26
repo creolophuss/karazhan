@@ -521,8 +521,13 @@ release_lock() {
 acquire_lock
 trap release_lock EXIT
 trap 'exit 130' HUP INT TERM
-cd "\$PROFILE_DIR"
-"\$HERMES_COMMAND" -p "\$PROFILE_NAME" chat
+if [ "\${1:-}" = codex ]; then
+  shift
+  codex --cd "\$PROFILE_DIR" --sandbox workspace-write "\$@"
+else
+  cd "\$PROFILE_DIR"
+  "\$HERMES_COMMAND" -p "\$PROFILE_NAME" chat
+fi
 EOF
 chmod 755 "$LAUNCHER_SOURCE"
 

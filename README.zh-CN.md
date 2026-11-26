@@ -58,6 +58,8 @@ cd karazhan
 
 从 Applications 启动 Karazhan。使用 `medivh` 创建顶层 Project Workspace，并通过 MCP 登记。Medivh 也可以记录用户明确要求的 Backlog。然后，由用户在该 Workspace 中启动 Project 的 Custodian。Custodian 先维护本地文件，再同步自己负责的结构化工作。
 
+使用 Codex 时，运行 `medivh codex --add-dir "/项目父目录的绝对路径"`。选择已经存在的父目录，Medivh 会在里面创建新 Workspace。一次会话需要多个父目录时，可重复使用 `--add-dir`。Codex 从 Medivh Profile 启动。
+
 Context 通知用法见 `node scripts/context-notify.mjs --help`。适配器不依赖 App 或常驻服务。会话登记、本地 Hook、MCP 配置和数据安全说明见[产品与集成参考](docs/product-requirements.md)。
 
 在已配置的 Workspace 中启动首个 Codex 主线程时，macOS 进度定时任务会自动开启。任务默认每小时检查交付、决定和阻塞变化。使用 `disable` 可持续关闭，使用 `enable --interval 7200` 可选择两小时。[定时任务设置](docs/product-requirements.md#scheduled-codex-progress)

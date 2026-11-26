@@ -440,7 +440,19 @@ fi
   });
   assert.notEqual(duplicate.status, 0);
   assert.match(duplicate.stderr, /already running/i);
+  const busyCodex = spawnSync(path.join(binDirectory, "medivh"), ["codex"], { cwd: root, env, encoding: "utf8" });
+  assert.equal(busyCodex.status, 3);
   await new Promise((resolve) => launcher.once("exit", resolve));
+
+  const codex = path.join(mockBin, "codex");
+  await writeFile(codex, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
+  const parents = [path.join(root, "projects with spaces"), path.join(root, "team's projects")];
+  for (const parent of parents) await mkdir(parent);
+  const extra = parents.flatMap((parent) => ["--add-dir", parent]);
+  const codexLaunch = spawnSync(path.join(binDirectory, "medivh"), ["codex", ...extra], { cwd: root, env, encoding: "utf8" });
+  assert.equal(codexLaunch.status, 0, codexLaunch.stderr);
+  assert.deepEqual(codexLaunch.stdout.trimEnd().split("\n"), ["--cd", profileDirectory, "--sandbox", "workspace-write", ...extra]);
+  await assert.rejects(stat(path.join(profileDirectory, ".medivh-launch.lock")), { code: "ENOENT" });
 
   await writeFile(mcpCommandConfig, "/different/karazhan-mcp\n");
   env.KARAZHAN_INSTALL_VERSION = "0.4.0";
