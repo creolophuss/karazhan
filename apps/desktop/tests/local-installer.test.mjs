@@ -200,6 +200,7 @@ if [ "\${1:-}" = "profile" ] && [ "\${2:-}" = "create" ]; then
   exit 0
 fi
 if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "medivh" ] && [ "\${3:-}" = "config" ] && [ "\${4:-}" = "get" ]; then
+  printf 'Hermes gateway restart pending\\n' >&2
   case "\${5:-}" in
     mcp_servers.karazhan.command) config_file="${mcpCommandConfig}" ;;
     mcp_servers.karazhan.env.KARAZHAN_DATABASE_PATH) config_file="${mcpDatabaseConfig}" ;;
@@ -209,6 +210,7 @@ if [ "\${1:-}" = "-p" ] && [ "\${2:-}" = "medivh" ] && [ "\${3:-}" = "config" ] 
     cat "$config_file"
     exit 0
   fi
+  if [ "$config_file" = "${mcpCommandConfig}" ]; then exec >&2; fi
   printf 'Config key not set: %s\\n' "\${5:-}"
   exit 1
 fi
@@ -258,6 +260,7 @@ fi
   }
   const first = run();
   assert.equal(first.status, 0, first.stderr);
+  assert.match(first.stderr, /Hermes gateway restart pending/);
   await stat(
     path.join(rustupHome, `toolchains/1.98.1-${rustTarget}/bin/cargo`),
   );

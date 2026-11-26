@@ -421,17 +421,21 @@ MCP_COMMAND_CONFIG_VALUE="$BIN_DIR/karazhan-mcp"
 
 read_medivh_config_value() {
   config_key=$1
-  if config_output=$("$HERMES_COMMAND" -p "$PROFILE_NAME" config get "$config_key" 2>&1); then
+  config_errors="$INSTALL_TMP/hermes-config.stderr"
+  if config_output=$("$HERMES_COMMAND" -p "$PROFILE_NAME" config get "$config_key" 2>"$config_errors"); then
+    cat "$config_errors" >&2
     printf '%s' "$config_output"
     return 0
   else
     config_status=$?
   fi
-  if [ "$config_status" -eq 1 ] && [ "$config_output" = "Config key not set: $config_key" ]; then
+  config_message=${config_output:-$(tail -n 1 "$config_errors")}
+  if [ "$config_status" -eq 1 ] && [ "$config_message" = "Config key not set: $config_key" ]; then
     return 1
   fi
   printf 'karazhan install: cannot inspect Medivh config key %s: %s\n' \
     "$config_key" "$config_output" >&2
+  cat "$config_errors" >&2
   return 2
 }
 
